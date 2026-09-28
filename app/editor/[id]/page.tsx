@@ -77,6 +77,7 @@ export default function EditorPage() {
   const renderedChapterIdRef = useRef<string | null>(null) 
   const activeChapterIndexRef = useRef(0)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [liveStats, setLiveStats] = useState({ words: 0, chars: 0 })
 
   useEffect(() => {
     const proj = getProject(projectId)
@@ -86,6 +87,8 @@ export default function EditorPage() {
     }
     projectRef.current = proj
     setProject(proj)
+    const initialBody = proj.chapters[0]?.body || ''
+    setLiveStats({ words: countWords(initialBody), chars: countChars(initialBody) })
     lastWordCountRef.current = proj.meta.wordCount
   }, [projectId, router])
 
@@ -107,8 +110,28 @@ export default function EditorPage() {
     if (savedStatusTimeoutRef.current) clearTimeout(savedStatusTimeoutRef.current)
   }, [])
 
-  const handleSave = useCallback(() => {
+  const syncEditorToProject = useCallback(() => {
     const currentProject = projectRef.current
+    const editor = editorRef.current
+    const chapterIndex = activeChapterIndexRef.current
+    if (!currentProject || !editor || !currentProject.chapters[chapterIndex]) return currentProject
+
+    const body = editor.innerHTML
+    const currentChapter = currentProject.chapters[chapterIndex]
+    if (currentChapter.body === body) return currentProject
+
+    const updatedProject = {
+      ...currentProject,
+      chapters: currentProject.chapters.map((chapter, index) => index === chapterIndex
+        ? { ...chapter, body, wordCount: countWords(body), updatedAt: new Date().toISOString() }
+        : chapter)
+    }
+    projectRef.current = updatedProject
+    return updatedProject
+  }, [])
+
+  const handleSave = useCallback(() => {
+    const currentProject = syncEditorToProject()
     if (!currentProject) return
 
     setSaveStatus('saving')
@@ -132,11 +155,9 @@ export default function EditorPage() {
     saveProject(projectId, updatedProject)
     setProject(updatedProject)
     setTimeout(() => setSaveStatus('saved'), 500)
-  }, [projectId])
+  }, [projectId, syncEditorToProject])
 
   const scheduleAutoSave = useCallback(() => {
-    setSaveStatus('unsaved')
-    
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
@@ -159,21 +180,31 @@ export default function EditorPage() {
   }, [handleSave])
 
   const handleEditorInput = () => {
-    if (!editorRef.current) return
+    const editor = editorRef.current
+    if (!editor) return
 
-    const html = editorRef.current.innerHTML
-    setProject((current) => {
-      if (!current || !current.chapters[activeChapterIndex]) return current
-      const updatedChapters = [...current.chapters]
-      updatedChapters[activeChapterIndex] = {
-        ...updatedChapters[activeChapterIndex],
-        body: html,
-        wordCount: countWords(html),
-        updatedAt: new Date().toISOString()
+    const html = editor.innerHTML
+    const text = editor.innerText
+    const currentProject = projectRef.current
+    if (currentProject?.chapters[activeChapterIndexRef.current]) {
+      const updatedProject = {
+        ...currentProject,
+        chapters: currentProject.chapters.map((chapter, index) => index === activeChapterIndexRef.current
+          ? { ...chapter, body: html, wordCount: countWords(text), updatedAt: new Date().toISOString() }
+          : chapter)
       }
-      return { ...current, chapters: updatedChapters }
-    })
+      projectRef.current = updatedProject
+    }
     scheduleAutoSave()
+  }
+
+  const handleEditorBlur = () => {
+    if (!editorRef.current) return
+    setLiveStats({
+      words: countWords(editorRef.current.innerText),
+      chars: countChars(editorRef.current.innerText),
+    })
+    setSaveStatus('unsaved')
   }
 
   const execCommand = (command: string, value?: string) => {
@@ -184,7 +215,8 @@ export default function EditorPage() {
 
   const handleAIChat = async (message?: string) => {
     const prompt = message || aiInput
-    if (!prompt.trim() || !project) return
+    const currentProject = syncEditorToProject() || projectRef.current
+    if (!prompt.trim() || !currentProject) return
     
     setAiLoading(true)
     setAiError(null)
@@ -196,11 +228,13 @@ export default function EditorPage() {
       timestamp: new Date().toISOString()
     }
     
-    const updatedHistory = [...project.aiHistory, userMessage]
-    setProject({ ...project, aiHistory: updatedHistory })
+    const updatedHistory = [...currentProject.aiHistory, userMessage]
+    const projectWithUserMessage = { ...currentProject, aiHistory: updatedHistory }
+    projectRef.current = projectWithUserMessage
+    setProject(projectWithUserMessage)
     
     try {
-      const currentContent = project.chapters[activeChapterIndex]?.body || ''
+      const currentContent = currentProject.chapters[activeChapterIndex]?.body || ''
       
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -209,8 +243,8 @@ export default function EditorPage() {
           action: 'chat',
           prompt,
           context: currentContent,
-          projectType: project.meta.projectType,
-          genre: project.meta.genre,
+          projectType: currentProject.meta.projectType,
+          genre: currentProject.meta.genre,
           history: updatedHistory.slice(-10),
           requestId: crypto.randomUUID()
         }),
@@ -251,6 +285,18 @@ export default function EditorPage() {
     scheduleAutoSave()
   }
 
+  const handleSelectChapter = (nextIndex: number) => {
+    if (nextIndex === activeChapterIndex) return
+    syncEditorToProject()
+    setProject(projectRef.current)
+    setActiveChapterIndex(nextIndex)
+    const nextChapter = projectRef.current?.chapters[nextIndex]
+    setLiveStats({
+      words: countWords(nextChapter?.body || ''),
+      chars: countChars(nextChapter?.body || ''),
+    })
+  }
+
   const insertIntoEditor = (text: string) => {
     const editor = editorRef.current
     if (!editor) return
@@ -289,8 +335,8 @@ export default function EditorPage() {
   }
 
   const activeChapter = project.chapters[activeChapterIndex]
-  const wordCount = activeChapter ? countWords(activeChapter.body) : 0
-  const charCount = activeChapter ? countChars(activeChapter.body) : 0
+  const wordCount = liveStats.words || (activeChapter ? countWords(activeChapter.body) : 0)
+  const charCount = liveStats.chars || (activeChapter ? countChars(activeChapter.body) : 0)
   const readTime = estimateReadTime(wordCount)
 
   return (
@@ -457,8 +503,9 @@ export default function EditorPage() {
                   contentEditable
                   className="min-h-[60vh] font-serif text-lg leading-relaxed outline-none prose prose-lg max-w-none"
                   style={{ fontFamily: 'var(--font-lora), Georgia, serif' }}
-                  onInput={handleEditorInput}
-                  suppressContentEditableWarning
+              onInput={handleEditorInput}
+              onBlur={handleEditorBlur}
+              suppressContentEditableWarning
                   data-placeholder="Begin your story here..."
                 />
                 <style jsx>{`
@@ -576,7 +623,7 @@ export default function EditorPage() {
             <ChapterManager
               project={project}
               activeChapterIndex={activeChapterIndex}
-              onSelectChapter={setActiveChapterIndex}
+              onSelectChapter={handleSelectChapter}
               onUpdateProject={(p) => {
                 setProject(p)
                 scheduleAutoSave()
