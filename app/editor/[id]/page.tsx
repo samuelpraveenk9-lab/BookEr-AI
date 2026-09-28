@@ -90,6 +90,13 @@ export default function EditorPage() {
     projectRef.current = project
   }, [project])
 
+  // Keep the contentEditable DOM in sync only when the loaded project or chapter changes.
+  // Updating innerHTML during every keystroke recreates the text node and moves the caret.
+  useEffect(() => {
+    if (!editorRef.current || !project) return
+    editorRef.current.innerHTML = project.chapters[activeChapterIndex]?.body || ''
+  }, [activeChapterIndex, Boolean(project)])
+
   const handleSave = useCallback(() => {
     const currentProject = projectRef.current
     if (!currentProject) return
