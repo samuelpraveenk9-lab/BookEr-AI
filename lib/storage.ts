@@ -7,8 +7,24 @@ const USER_KEY = 'booker_user'
 
 export function getProjects(): BRXProject[] {
   if (typeof window === 'undefined') return []
-  const stored = localStorage.getItem(PROJECTS_KEY)
-  return stored ? JSON.parse(stored) : []
+  try {
+    const stored = localStorage.getItem(PROJECTS_KEY)
+    if (!stored) return []
+    const parsed = JSON.parse(stored)
+    if (!Array.isArray(parsed)) return []
+    let changed = false
+    const projects = parsed.filter(Boolean).map((project: BRXProject) => {
+      if (!project.id) {
+        changed = true
+        return { ...project, id: crypto.randomUUID() }
+      }
+      return project
+    })
+    if (changed) saveProjects(projects)
+    return projects
+  } catch {
+    return []
+  }
 }
 
 export function saveProjects(projects: BRXProject[]): void {
@@ -17,21 +33,20 @@ export function saveProjects(projects: BRXProject[]): void {
 }
 
 export function getProject(id: string): BRXProject | null {
-  const projects = getProjects()
-  return projects.find((_, index) => `project-${index}` === id) || null
+  return getProjects().find((project) => project.id === id) || null
 }
 
 export function getProjectByIndex(index: number): BRXProject | null {
-  const projects = getProjects()
-  return projects[index] || null
+  return getProjects()[index] || null
 }
 
 export function saveProject(id: string, project: BRXProject): void {
   const projects = getProjects()
-  const index = parseInt(id.replace('project-', ''))
-  if (!isNaN(index) && index < projects.length) {
+  const index = projects.findIndex((item) => item.id === id)
+  if (index >= 0) {
     projects[index] = {
       ...project,
+      id,
       meta: {
         ...project.meta,
         updatedAt: new Date().toISOString()
@@ -43,18 +58,16 @@ export function saveProject(id: string, project: BRXProject): void {
 
 export function addProject(project: BRXProject): string {
   const projects = getProjects()
-  projects.push(project)
+  const normalizedProject = project.id ? project : { ...project, id: crypto.randomUUID() }
+  projects.push(normalizedProject)
   saveProjects(projects)
-  return `project-${projects.length - 1}`
+  return normalizedProject.id
 }
 
 export function deleteProject(id: string): void {
   const projects = getProjects()
-  const index = parseInt(id.replace('project-', ''))
-  if (!isNaN(index) && index < projects.length) {
-    projects.splice(index, 1)
-    saveProjects(projects)
-  }
+  const nextProjects = projects.filter((project) => project.id !== id)
+  if (nextProjects.length !== projects.length) saveProjects(nextProjects)
 }
 
 export function getDailyStats(): DailyStats[] {

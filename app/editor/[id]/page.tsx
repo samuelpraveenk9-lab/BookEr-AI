@@ -40,7 +40,7 @@ import {
   Star,
   FileOutput
 } from 'lucide-react'
-import { getProjectByIndex, saveProject, addWordsToday } from '@/lib/storage'
+import { getProject, saveProject, addWordsToday } from '@/lib/storage'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
@@ -60,8 +60,7 @@ const AI_QUICK_ACTIONS = [
 export default function EditorPage() {
   const params = useParams()
   const router = useRouter()
-  const projectId = `project-${params.id}`
-  const projectIndex = parseInt(params.id as string)
+  const projectId = params.id as string
   
   const [project, setProject] = useState<BRXProject | null>(null)
   const [activeChapterIndex, setActiveChapterIndex] = useState(0)
@@ -76,7 +75,7 @@ export default function EditorPage() {
   const projectRef = useRef<BRXProject | null>(null)
 
   useEffect(() => {
-    const proj = getProjectByIndex(projectIndex)
+    const proj = getProject(projectId)
     if (!proj) {
       router.push('/dashboard')
       return
@@ -84,7 +83,7 @@ export default function EditorPage() {
     projectRef.current = proj
     setProject(proj)
     lastWordCountRef.current = proj.meta.wordCount
-  }, [projectIndex, router])
+  }, [projectId, router])
 
   useEffect(() => {
     projectRef.current = project
@@ -242,20 +241,31 @@ export default function EditorPage() {
   }
 
   const insertIntoEditor = (text: string) => {
-    if (!editorRef.current) return
-    
-    editorRef.current.focus()
+    const editor = editorRef.current
+    if (!editor) return
+
     const selection = window.getSelection()
-    
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0)
+    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+    const selectionIsInsideEditor = Boolean(range && editor.contains(range.commonAncestorContainer))
+
+    editor.focus()
+    if (selectionIsInsideEditor && range) {
       range.deleteContents()
-      range.insertNode(document.createTextNode(text))
-      range.collapse(false)
+      const textNode = document.createTextNode(text)
+      range.insertNode(textNode)
+      range.setStartAfter(textNode)
+      range.collapse(true)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
     } else {
-      editorRef.current.innerHTML += text
+      const endRange = document.createRange()
+      endRange.selectNodeContents(editor)
+      endRange.collapse(false)
+      selection?.removeAllRanges()
+      selection?.addRange(endRange)
+      document.execCommand('insertText', false, text)
     }
-    
+
     handleEditorInput()
   }
 

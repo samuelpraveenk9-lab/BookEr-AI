@@ -1,37 +1,55 @@
 import { generateText, gateway } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
-interface AIRequest {
-  action: string
-  prompt?: string
-  content?: string
-  context?: string
-  title?: string
-  projectType?: string
-  genre?: string
-  history?: Array<{ role: string; content: string }>
-  field?: string
-  characterName?: string
-  role?: string
-  existingData?: Record<string, string>
-  section?: string
-  existingNotes?: Record<string, string>
-  worldNotes?: Record<string, string>
-  toolId?: string
-  systemPrompt?: string
-}
+const MAX_PROMPT_LENGTH = 4000
+const MAX_CONTEXT_LENGTH = 24000
+const MAX_REVIEW_LENGTH = 30000
+
+const aiRequestSchema = z.object({
+  action: z.enum(['chat', 'review', 'generate_synopsis', 'generate_character_field', 'generate_world_content', 'world_building_chat', 'studio_tool']),
+  prompt: z.string().trim().max(MAX_PROMPT_LENGTH).optional(),
+  content: z.string().max(MAX_REVIEW_LENGTH).optional(),
+  context: z.string().max(MAX_CONTEXT_LENGTH).optional(),
+  title: z.string().trim().max(200).optional(),
+  projectType: z.string().trim().max(80).optional(),
+  genre: z.string().trim().max(80).optional(),
+  history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(MAX_PROMPT_LENGTH) })).max(12).optional(),
+  field: z.string().trim().max(80).optional(),
+  characterName: z.string().trim().max(120).optional(),
+  role: z.string().trim().max(80).optional(),
+  existingData: z.record(z.string().max(2000)).optional(),
+  section: z.string().trim().max(80).optional(),
+  existingNotes: z.record(z.string().max(4000)).optional(),
+  worldNotes: z.record(z.string().max(4000)).optional(),
+  toolId: z.string().trim().max(80).optional(),
+  responseLength: z.enum(['short', 'medium', 'long']).optional(),
+  writingStyle: z.enum(['literary', 'casual', 'genre-specific']).optional(),
+})
+
+type AIRequest = z.infer<typeof aiRequestSchema>
 
 export async function POST(request: NextRequest) {
   let body = {} as AIRequest
   try {
-    body = (await request.json()) as AIRequest
+    const parsed = aiRequestSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid AI request', details: parsed.error.flatten() }, { status: 400 })
+    }
+    body = parsed.data
     const { systemInstruction, prompt } = buildPrompt(body)
+    const responseTokens = body.responseLength === 'short' ? 700 : body.responseLength === 'long' ? 1800 : 1200
+    const styleInstruction = body.writingStyle === 'casual'
+      ? ' Use clear, conversational language.'
+      : body.writingStyle === 'genre-specific'
+        ? ` Lean into recognizable ${body.genre || 'genre'} conventions without using clichés.`
+        : ' Use precise, literary language when appropriate.'
     const { text } = await generateText({
       model: gateway('google/gemini-2.5-flash'),
-      system: systemInstruction,
+      system: `${systemInstruction}${styleInstruction}`,
       prompt,
       temperature: 0.8,
-      maxOutputTokens: 1200,
+      maxOutputTokens: responseTokens,
     })
 
     if (body.action === 'review') {
@@ -44,14 +62,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ content: text, response: text })
   } catch (error) {
     console.error('[v0] AI API error:', error)
-    return NextResponse.json(generateFallbackResponse(body), { status: 200 })
+    return NextResponse.json({ error: 'AI service unavailable. Please try again.' }, { status: 502 })
   }
 }
 
 function buildPrompt(body: AIRequest) {
   const projectType = body.projectType || 'Novel'
   const genre = body.genre || 'Fantasy'
-  let systemInstruction = body.systemPrompt || `You are a creative writing assistant for a ${projectType} in the ${genre} genre. Be concise, specific, and useful.`
+  let systemInstruction = `You are a creative writing assistant for a ${projectType} in the ${genre} genre. Be concise, specific, and useful.`
   let prompt = body.prompt || ''
 
   switch (body.action) {

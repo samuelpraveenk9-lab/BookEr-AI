@@ -19,7 +19,7 @@ import {
   BookOpen,
   FileText
 } from 'lucide-react'
-import { getProjectByIndex } from '@/lib/storage'
+import { getProject } from '@/lib/storage'
 import { BRXProject } from '@/lib/types'
 
 interface ReviewFeedback {
@@ -31,7 +31,7 @@ interface ReviewFeedback {
 export default function ReviewPage() {
   const params = useParams()
   const router = useRouter()
-  const projectIndex = parseInt(params.id as string)
+  const projectId = params.id as string
   
   const [project, setProject] = useState<BRXProject | null>(null)
   const [selectedChapter, setSelectedChapter] = useState<number>(0)
@@ -41,13 +41,13 @@ export default function ReviewPage() {
   const [reviewMode, setReviewMode] = useState<'chapter' | 'custom' | 'full'>('chapter')
 
   useEffect(() => {
-    const proj = getProjectByIndex(projectIndex)
+    const proj = getProject(projectId)
     if (!proj) {
       router.push('/dashboard')
       return
     }
     setProject(proj)
-  }, [projectIndex, router])
+  }, [projectId, router])
 
   const handleReview = async () => {
     if (!project) return
