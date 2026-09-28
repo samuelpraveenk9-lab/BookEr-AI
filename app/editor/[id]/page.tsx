@@ -71,8 +71,12 @@ export default function EditorPage() {
   
   const editorRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastWordCountRef = useRef(0)
   const projectRef = useRef<BRXProject | null>(null)
+  const renderedChapterIdRef = useRef<string | null>(null) 
+  const activeChapterIndexRef = useRef(0)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
     const proj = getProject(projectId)
@@ -89,12 +93,19 @@ export default function EditorPage() {
     projectRef.current = project
   }, [project])
 
-  // Keep the contentEditable DOM in sync only when the loaded project or chapter changes.
-  // Updating innerHTML during every keystroke recreates the text node and moves the caret.
+  // The editable DOM owns the caret while typing. Only hydrate it when the chapter changes.
   useEffect(() => {
-    if (!editorRef.current || !project) return
-    editorRef.current.innerHTML = project.chapters[activeChapterIndex]?.body || ''
-  }, [activeChapterIndex, Boolean(project)])
+    activeChapterIndexRef.current = activeChapterIndex
+    const chapter = project?.chapters[activeChapterIndex]
+    if (!editorRef.current || !chapter || renderedChapterIdRef.current === chapter.id) return
+    editorRef.current.innerHTML = chapter.body || ''
+    renderedChapterIdRef.current = chapter.id
+  }, [activeChapterIndex, project])
+
+  useEffect(() => () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    if (savedStatusTimeoutRef.current) clearTimeout(savedStatusTimeoutRef.current)
+  }, [])
 
   const handleSave = useCallback(() => {
     const currentProject = projectRef.current
@@ -176,6 +187,7 @@ export default function EditorPage() {
     if (!prompt.trim() || !project) return
     
     setAiLoading(true)
+    setAiError(null)
     setAiInput('')
     
     const userMessage: AIMessage = {
@@ -199,8 +211,10 @@ export default function EditorPage() {
           context: currentContent,
           projectType: project.meta.projectType,
           genre: project.meta.genre,
-          history: updatedHistory.slice(-10)
-        })
+          history: updatedHistory.slice(-10),
+          requestId: crypto.randomUUID()
+        }),
+        cache: 'no-store'
       })
       
       let assistantContent = ''
@@ -208,7 +222,12 @@ export default function EditorPage() {
         const data = await response.json()
         assistantContent = data.content || data.response || ''
       } else {
-        assistantContent = generateFallbackResponse(prompt, project.meta.projectType, project.meta.genre)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'The AI assistant could not respond.')
+      }
+
+      if (!assistantContent.trim()) {
+        throw new Error('The AI assistant returned an empty response.')
       }
       
       const assistantMessage: AIMessage = {
@@ -223,17 +242,9 @@ export default function EditorPage() {
       } : null)
       
     } catch (error) {
-      console.log('[v0] AI chat error:', error)
-      const fallbackMessage: AIMessage = {
-        role: 'assistant',
-        content: generateFallbackResponse(prompt, project.meta.projectType, project.meta.genre),
-        timestamp: new Date().toISOString()
-      }
-      
-      setProject(prev => prev ? {
-        ...prev,
-        aiHistory: [...updatedHistory, fallbackMessage]
-      } : null)
+      console.error('[v0] AI chat error:', error)
+      setAiError(error instanceof Error ? error.message : 'The AI assistant could not respond. Please try again.')
+      setProject(prev => prev ? { ...prev, aiHistory: prev.aiHistory.filter((item) => item !== userMessage) } : null)
     }
     
     setAiLoading(false)
@@ -475,6 +486,11 @@ export default function EditorPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Customized for {project.meta.projectType}
                   </p>
+                  {aiError && (
+                    <p role="alert" className="mt-2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                      {aiError}
+                    </p>
+                  )}
                 </div>
                 
                 <div className="p-3 border-b border-border">

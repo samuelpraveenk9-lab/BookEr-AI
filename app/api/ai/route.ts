@@ -25,6 +25,7 @@ const aiRequestSchema = z.object({
   toolId: z.string().trim().max(80).optional(),
   responseLength: z.enum(['short', 'medium', 'long']).optional(),
   writingStyle: z.enum(['literary', 'casual', 'genre-specific']).optional(),
+  requestId: z.string().uuid().optional(),
 })
 
 type AIRequest = z.infer<typeof aiRequestSchema>
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     }
     body = parsed.data
     const { systemInstruction, prompt } = buildPrompt(body)
+    const requestContext = body.requestId ? `\nThis is a fresh request (${body.requestId}). Do not repeat prior wording; generate a new response grounded in the user’s exact request and context.` : ''
     const responseTokens = body.responseLength === 'short' ? 700 : body.responseLength === 'long' ? 1800 : 1200
     const styleInstruction = body.writingStyle === 'casual'
       ? ' Use clear, conversational language.'
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
         : ' Use precise, literary language when appropriate.'
     const { text } = await generateText({
       model: gateway('google/gemini-2.5-flash'),
-      system: `${systemInstruction}${styleInstruction}`,
+      system: `${systemInstruction}${styleInstruction}${requestContext}`,
       prompt,
       temperature: 0.8,
       maxOutputTokens: responseTokens,

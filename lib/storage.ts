@@ -29,7 +29,11 @@ export function getProjects(): BRXProject[] {
 
 export function saveProjects(projects: BRXProject[]): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects))
+  try {
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects))
+  } catch (error) {
+    console.error('[v0] Unable to save projects:', error)
+  }
 }
 
 export function getProject(id: string): BRXProject | null {
@@ -72,8 +76,13 @@ export function deleteProject(id: string): void {
 
 export function getDailyStats(): DailyStats[] {
   if (typeof window === 'undefined') return []
-  const stored = localStorage.getItem(STATS_KEY)
-  return stored ? JSON.parse(stored) : []
+  try {
+    const stored = localStorage.getItem(STATS_KEY)
+    const parsed = stored ? JSON.parse(stored) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 export function saveDailyStats(stats: DailyStats[]): void {
@@ -83,7 +92,8 @@ export function saveDailyStats(stats: DailyStats[]): void {
 
 export function addWordsToday(words: number): void {
   const stats = getDailyStats()
-  const today = new Date().toISOString().split('T')[0]
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const todayIndex = stats.findIndex(s => s.date === today)
   
   if (todayIndex >= 0) {
