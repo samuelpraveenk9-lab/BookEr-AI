@@ -60,7 +60,7 @@ function buildPrompt(body: AIRequest) {
       prompt = `Write a compelling 3-sentence back-cover blurb for a ${projectType} titled "${body.title || 'Untitled'}" in the ${genre} genre.`
       break
     case 'chat':
-      prompt = `Current chapter content:\n${body.context || '(empty)'}\n\nAuthor request: ${prompt}`
+      prompt = `Conversation history:\n${formatHistory(body.history)}\n\nCurrent chapter content:\n${body.context || '(empty)'}\n\nAuthor request:\n${prompt}`
       break
     case 'generate_character_field':
       prompt = `Generate the ${body.field} for ${body.characterName}, a ${body.role}. Keep it to 2-3 evocative sentences. Existing info: ${JSON.stringify(body.existingData || {})}`
@@ -137,12 +137,37 @@ function buildExcerptFallback(content: string) {
   }
 }
 
+function formatHistory(history: AIRequest['history']) {
+  return (history || []).slice(-8).map((message) => `${message.role}: ${message.content}`).join('\n') || '(none)'
+}
+
 function generateFallbackResponse(body: AIRequest): Record<string, unknown> {
   const type = body.projectType || 'novel'
   const genre = body.genre || 'fantasy'
-  if (body.action === 'generate_synopsis') return { synopsis: `In a ${genre.toLowerCase()} world, an unlikely hero faces impossible odds. Ancient powers awaken, forcing them to choose between safety and sacrifice. Their choice will change everything.` }
+  const request = (body.prompt || '').trim()
+  const lower = request.toLowerCase()
+
+  if (body.action === 'generate_synopsis') {
+    return { synopsis: `When an unlikely protagonist discovers a dangerous secret, they must choose between the life they know and a truth that could reshape their ${genre.toLowerCase()} world. Pursued by forces that understand the secret better than they do, every answer creates a more difficult question. The choice they make will decide who pays the price.` }
+  }
   if (body.action === 'review') return { feedback: buildExcerptFallback(body.content || '') }
-  return { content: `I can help shape your ${type.toLowerCase()}. Try asking for a continuation, sharper dialogue, character development, or a prose revision.`, response: `I can help shape your ${type.toLowerCase()}.` }
+
+  let content: string
+  if (lower.includes('dialogue')) {
+    content = `Try giving each speaker a different immediate objective. One character can avoid the question while the other presses harder:\n\n“${request.replace(/dialogue/ig, '').trim() || 'You knew this would happen.'}”\n\n“That is not what I said,” she replied. “It is what you refused to hear.”\n\nThe exchange works best when the characters want different outcomes, not merely when they trade information.`
+  } else if (lower.includes('continue') || lower.includes('scene')) {
+    const context = (body.context || '').replace(/<[^>]+>/g, '').trim()
+    const lastLine = context.split(/\n/).filter(Boolean).at(-1) || 'The decision could no longer wait.'
+    content = `Build from the existing tension rather than restarting the scene. After “${lastLine.slice(-180)}”, introduce a concrete complication: a choice, interruption, or discovery that makes the protagonist act. Let the next paragraph show the consequence through behavior and specific detail.`
+  } else if (lower.includes('prose') || lower.includes('rewrite') || lower.includes('improve')) {
+    content = `For a stronger revision, identify the sentence’s main action, replace abstract verbs with observable behavior, and vary the rhythm. Keep one vivid detail that belongs only to this scene, then cut any explanation that the character’s actions already communicate.`
+  } else if (lower.includes('plot') || lower.includes('twist')) {
+    content = `A useful turn should change the protagonist’s available choices, not only reveal information. Consider making the apparent ally benefit from the conflict, then force the protagonist to choose between a short-term win and a relationship they still need.`
+  } else {
+    content = `For this ${genre.toLowerCase()} ${type.toLowerCase()}, start by naming the viewpoint character’s immediate want, the obstacle in the way, and what will worsen if they hesitate. Your request is “${request || 'help with my story'}”; use that answer to shape the next concrete beat.`
+  }
+
+  return { content, response: content }
 }
 
 export const runtime = 'nodejs'
