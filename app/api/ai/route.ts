@@ -22,8 +22,9 @@ interface AIRequest {
 }
 
 export async function POST(request: NextRequest) {
+  let body = {} as AIRequest
   try {
-    const body = (await request.json()) as AIRequest
+    body = (await request.json()) as AIRequest
     const { systemInstruction, prompt } = buildPrompt(body)
     const { text } = await generateText({
       model: gateway('google/gemini-2.5-flash'),
@@ -34,7 +35,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (body.action === 'review') {
-      return NextResponse.json({ feedback: parseReviewResponse(text) })
+      const feedback = parseReviewResponse(text, body.content || '')
+      return NextResponse.json({ feedback })
     }
     if (body.action === 'generate_synopsis') {
       return NextResponse.json({ synopsis: text })
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ content: text, response: text })
   } catch (error) {
     console.error('[v0] AI API error:', error)
-    return NextResponse.json(generateFallbackResponse({} as AIRequest), { status: 200 })
+    return NextResponse.json(generateFallbackResponse(body), { status: 200 })
   }
 }
 
@@ -70,7 +72,7 @@ function buildPrompt(body: AIRequest) {
       prompt = `World notes: ${JSON.stringify(body.worldNotes || {})}\nQuestion: ${prompt}`
       break
     case 'review':
-      prompt = `Review this ${projectType} excerpt in the ${genre} genre. Return sections titled Strengths, Areas to Improve, and Specific Suggestions, with 3-5 bullet points each.\n\n${body.content || ''}`
+      prompt = `Act as a candid developmental editor. Analyze ONLY the excerpt below, not a hypothetical book. Ground every point in an observable detail from the excerpt, quoting a short phrase when useful. Be honest and balanced: do not invent strengths, do not use generic advice, and do not repeat stock feedback. Evaluate story and storywriting, including hook, character desire/conflict, stakes, scene purpose, pacing, structure, point of view, dialogue, imagery, specificity, sentence rhythm, and show-versus-tell when relevant. Return exactly these headings: Strengths, Areas to Improve, Specific Suggestions. Under each heading provide 3-5 concise bullet points. If the excerpt is too short to judge something, say so explicitly.\n\nEXCERPT TO ANALYZE:\n${body.content || '(No excerpt provided)'}`
       break
     case 'studio_tool':
       prompt = `Project type: ${projectType}\n\nUser request: ${prompt}`
@@ -79,13 +81,59 @@ function buildPrompt(body: AIRequest) {
   return { systemInstruction, prompt }
 }
 
-function parseReviewResponse(text: string) {
-  const sections = text.split(/(?:^|\n)\s*(?:#{1,3}\s*)?(Strengths|Areas to Improve|Specific Suggestions|Suggestions)\s*:?.*/i)
-  const points = (value: string) => value.split(/\n/).map((line) => line.replace(/^\s*[-*•]\s*/, '').trim()).filter((line) => line.length > 10).slice(0, 5)
+function parseReviewResponse(text: string, content: string) {
+  const normalized = text.replace(/\r/g, '')
+  const sectionPattern = /(?:^|\n)\s*(?:#{1,3}\s*)?(Strengths|Areas to Improve|Specific Suggestions|Suggestions)\s*:?[ \t]*\n?/gi
+  const matches = [...normalized.matchAll(sectionPattern)]
+  const sections: Record<string, string> = {}
+
+  matches.forEach((match, index) => {
+    const key = match[1].toLowerCase()
+    const start = (match.index || 0) + match[0].length
+    const end = matches[index + 1]?.index ?? normalized.length
+    sections[key] = normalized.slice(start, end)
+  })
+
+  const points = (value: string | undefined) => (value || '')
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
+    .filter((line) => line.length > 10)
+    .slice(0, 5)
+
+  const feedback = {
+    strengths: points(sections['strengths']),
+    improvements: points(sections['areas to improve']),
+    suggestions: points(sections['specific suggestions'] || sections['suggestions']),
+  }
+
+  return feedback.strengths.length && feedback.improvements.length && feedback.suggestions.length
+    ? feedback
+    : buildExcerptFallback(content)
+}
+
+function buildExcerptFallback(content: string) {
+  const excerpt = content.trim()
+  const sentences = excerpt.split(/[.!?]+/).map((sentence) => sentence.trim()).filter(Boolean)
+  const words = excerpt.split(/\s+/).filter(Boolean)
+  const hasDialogue = /[“”\"]/.test(excerpt)
+  const hasSensoryDetail = /\b(heard|saw|felt|smelled|tasted|cold|warm|bright|dark|rough|soft|wind|rain)\b/i.test(excerpt)
+  const firstSentence = sentences[0]
   return {
-    strengths: points(sections[2] || ''),
-    improvements: points(sections[4] || ''),
-    suggestions: points(sections[6] || ''),
+    strengths: [
+      firstSentence ? `The opening establishes a clear starting point: “${firstSentence.slice(0, 140)}${firstSentence.length > 140 ? '…' : ''}”` : 'The excerpt is too short to identify a reliable narrative strength.',
+      `${words.length} words give enough material to assess the passage’s immediate voice and focus.`,
+      hasDialogue ? 'Dialogue is present, giving the scene an opportunity for character-specific tension and subtext.' : 'The passage stays focused on narration rather than switching between several voices.',
+    ],
+    improvements: [
+      sentences.length < 3 ? 'The excerpt is very short, so the scene’s larger story movement and stakes are not yet clear.' : 'Clarify what the viewpoint character wants in this moment and what may prevent them from getting it.',
+      hasSensoryDetail ? 'Some sensory detail is present; connect it more directly to the viewpoint character’s emotion or immediate goal.' : 'Add concrete sensory detail tied to the viewpoint character so the setting feels specific rather than generalized.',
+      hasDialogue ? 'Check that each line of dialogue changes the power dynamic or reveals new information.' : 'Consider adding a specific action, reaction, or line of dialogue to break up exposition where the scene slows.',
+    ],
+    suggestions: [
+      firstSentence ? `Revise the first paragraph around the central tension introduced by “${firstSentence.slice(0, 90)}${firstSentence.length > 90 ? '…' : ''}”.` : 'Paste a longer excerpt so the review can assess story structure and prose patterns honestly.',
+      'Write one sentence naming the character’s immediate objective, then revise the scene so each beat pressures that objective.',
+      'Read the passage aloud and cut repeated modifiers, vague verbs, and sentences that do not change the reader’s understanding.',
+    ],
   }
 }
 
@@ -93,7 +141,7 @@ function generateFallbackResponse(body: AIRequest): Record<string, unknown> {
   const type = body.projectType || 'novel'
   const genre = body.genre || 'fantasy'
   if (body.action === 'generate_synopsis') return { synopsis: `In a ${genre.toLowerCase()} world, an unlikely hero faces impossible odds. Ancient powers awaken, forcing them to choose between safety and sacrifice. Their choice will change everything.` }
-  if (body.action === 'review') return { feedback: { strengths: ['The voice is engaging and clear.', 'The premise creates immediate curiosity.'], improvements: ['Vary sentence rhythm for a smoother pace.', 'Add sensory detail at key moments.'], suggestions: ['Read the passage aloud.', 'Strengthen the scene objective.'] } }
+  if (body.action === 'review') return { feedback: buildExcerptFallback(body.content || '') }
   return { content: `I can help shape your ${type.toLowerCase()}. Try asking for a continuation, sharper dialogue, character development, or a prose revision.`, response: `I can help shape your ${type.toLowerCase()}.` }
 }
 

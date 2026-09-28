@@ -52,9 +52,6 @@ export default function ReviewPage() {
   const handleReview = async () => {
     if (!project) return
     
-    setIsReviewing(true)
-    setFeedback(null)
-    
     let contentToReview = ''
     
     if (reviewMode === 'chapter') {
@@ -64,6 +61,18 @@ export default function ReviewPage() {
     } else {
       contentToReview = project.chapters.map(ch => ch.body).join('\n\n---\n\n')
     }
+
+    if (!contentToReview.trim()) {
+      setFeedback({
+        strengths: ['There is no excerpt to evaluate yet.'],
+        improvements: ['Add or select an excerpt before requesting a review.'],
+        suggestions: ['Paste a representative scene or write at least one paragraph, then run the review again.'],
+      })
+      return
+    }
+
+    setIsReviewing(true)
+    setFeedback(null)
     
     try {
       const response = await fetch('/api/ai', {
@@ -79,13 +88,13 @@ export default function ReviewPage() {
       
       if (response.ok) {
         const data = await response.json()
-        setFeedback(data.feedback || generateFallbackReview(project.meta.genre))
+        setFeedback(data.feedback || generateFallbackReview(project.meta.genre, contentToReview))
       } else {
-        setFeedback(generateFallbackReview(project.meta.genre))
+        setFeedback(generateFallbackReview(project.meta.genre, contentToReview))
       }
     } catch (error) {
       console.log('[v0] Review error:', error)
-      setFeedback(generateFallbackReview(project.meta.genre))
+      setFeedback(generateFallbackReview(project.meta.genre, contentToReview))
     }
     
     setIsReviewing(false)
@@ -328,26 +337,25 @@ export default function ReviewPage() {
   )
 }
 
-function generateFallbackReview(genre: string): ReviewFeedback {
+function generateFallbackReview(genre: string, content: string): ReviewFeedback {
+  const excerpt = content.trim()
+  const firstSentence = excerpt.split(/[.!?]+/).map((part) => part.trim()).find(Boolean) || 'the opening'
+  const words = excerpt.split(/\s+/).filter(Boolean).length
   return {
     strengths: [
-      'Your narrative voice is engaging and pulls readers into the story effectively.',
-      'The pacing maintains reader interest with well-timed reveals and developments.',
-      `Your ${genre.toLowerCase()} elements are authentic and well-researched.`,
-      'Character interactions feel natural and drive the plot forward.'
+      `The excerpt opens with a concrete narrative starting point: “${firstSentence.slice(0, 120)}${firstSentence.length > 120 ? '…' : ''}”.`,
+      `The ${words}-word passage gives the reader a focused sample of the current voice and scene direction.`,
+      `The ${genre.toLowerCase()} framing can become more distinctive as the character conflict develops.`
     ],
     improvements: [
-      'Consider varying sentence structure more to create rhythm and emphasis.',
-      'Some passages could benefit from more sensory details to immerse readers.',
-      'A few transitions between scenes feel abrupt—consider smoother bridges.',
-      'Some dialogue tags could be replaced with action beats for stronger impact.'
+      'Make the viewpoint character’s immediate want and obstacle unmistakable in the scene.',
+      'Add specific sensory details that reveal the character’s emotional state instead of only describing the setting.',
+      'Check each paragraph for a change in tension, information, or decision so the scene keeps moving.'
     ],
     suggestions: [
-      'Try reading your work aloud to catch awkward phrasing and rhythm issues.',
-      'Consider adding a moment of internal reflection before major character decisions.',
-      'The opening paragraph could be strengthened with a more compelling hook.',
-      'Look for opportunities to show rather than tell emotional states.',
-      'Consider deepening secondary characters by giving them distinct voices and motivations.'
+      `Revise the opening around the tension implied by “${firstSentence.slice(0, 80)}${firstSentence.length > 80 ? '…' : ''}”.`,
+      'Give the character a concrete choice by the end of the excerpt, even if the larger conflict remains unresolved.',
+      'Read the passage aloud and replace vague verbs or repeated sentence openings with sharper, more varied phrasing.'
     ]
   }
 }
