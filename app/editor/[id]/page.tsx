@@ -437,7 +437,6 @@ export default function EditorPage() {
                   className="min-h-[60vh] font-serif text-lg leading-relaxed outline-none prose prose-lg max-w-none"
                   style={{ fontFamily: 'var(--font-lora), Georgia, serif' }}
                   onInput={handleEditorInput}
-                  dangerouslySetInnerHTML={{ __html: activeChapter?.body || '' }}
                   suppressContentEditableWarning
                   data-placeholder="Begin your story here..."
                 />
