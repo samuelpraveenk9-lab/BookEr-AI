@@ -73,6 +73,7 @@ export default function EditorPage() {
   const editorRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastWordCountRef = useRef(0)
+  const projectRef = useRef<BRXProject | null>(null)
 
   useEffect(() => {
     const proj = getProjectByIndex(projectIndex)
@@ -80,43 +81,41 @@ export default function EditorPage() {
       router.push('/dashboard')
       return
     }
+    projectRef.current = proj
     setProject(proj)
     lastWordCountRef.current = proj.meta.wordCount
   }, [projectIndex, router])
 
+  useEffect(() => {
+    projectRef.current = project
+  }, [project])
+
   const handleSave = useCallback(() => {
-    if (!project) return
-    
+    const currentProject = projectRef.current
+    if (!currentProject) return
+
     setSaveStatus('saving')
-    
-    // Calculate total word count
-    const totalWords = project.chapters.reduce((sum, ch) => sum + countWords(ch.body), 0)
-    const totalChars = project.chapters.reduce((sum, ch) => sum + countChars(ch.body), 0)
-    
-    // Track new words written
+    const totalWords = currentProject.chapters.reduce((sum, ch) => sum + countWords(ch.body), 0)
+    const totalChars = currentProject.chapters.reduce((sum, ch) => sum + countChars(ch.body), 0)
     const newWords = totalWords - lastWordCountRef.current
-    if (newWords > 0) {
-      addWordsToday(newWords)
-    }
+    if (newWords > 0) addWordsToday(newWords)
     lastWordCountRef.current = totalWords
-    
+
     const updatedProject = {
-      ...project,
+      ...currentProject,
       meta: {
-        ...project.meta,
+        ...currentProject.meta,
         wordCount: totalWords,
         charCount: totalChars,
         updatedAt: new Date().toISOString()
       }
     }
-    
+
+    projectRef.current = updatedProject
     saveProject(projectId, updatedProject)
     setProject(updatedProject)
-    
-    setTimeout(() => {
-      setSaveStatus('saved')
-    }, 500)
-  }, [project, projectId])
+    setTimeout(() => setSaveStatus('saved'), 500)
+  }, [projectId])
 
   const scheduleAutoSave = useCallback(() => {
     setSaveStatus('unsaved')
@@ -143,22 +142,20 @@ export default function EditorPage() {
   }, [handleSave])
 
   const handleEditorInput = () => {
-    if (!project || !editorRef.current) return
-    
+    if (!editorRef.current) return
+
     const html = editorRef.current.innerHTML
-    const updatedChapters = [...project.chapters]
-    updatedChapters[activeChapterIndex] = {
-      ...updatedChapters[activeChapterIndex],
-      body: html,
-      wordCount: countWords(html),
-      updatedAt: new Date().toISOString()
-    }
-    
-    setProject({
-      ...project,
-      chapters: updatedChapters
+    setProject((current) => {
+      if (!current || !current.chapters[activeChapterIndex]) return current
+      const updatedChapters = [...current.chapters]
+      updatedChapters[activeChapterIndex] = {
+        ...updatedChapters[activeChapterIndex],
+        body: html,
+        wordCount: countWords(html),
+        updatedAt: new Date().toISOString()
+      }
+      return { ...current, chapters: updatedChapters }
     })
-    
     scheduleAutoSave()
   }
 
