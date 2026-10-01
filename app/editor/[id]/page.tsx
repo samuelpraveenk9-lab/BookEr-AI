@@ -40,7 +40,7 @@ import {
   Star,
   FileOutput
 } from 'lucide-react'
-import { getProjectByIndex, saveProject, addWordsToday } from '@/lib/storage'
+import { getProject, saveProject, addWordsToday } from '@/lib/storage'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
@@ -60,8 +60,7 @@ const AI_QUICK_ACTIONS = [
 export default function EditorPage() {
   const params = useParams()
   const router = useRouter()
-  const projectId = `project-${params.id}`
-  const projectIndex = parseInt(params.id as string)
+  const projectId = params.id as string
   
   const [project, setProject] = useState<BRXProject | null>(null)
   const [activeChapterIndex, setActiveChapterIndex] = useState(0)
@@ -72,33 +71,67 @@ export default function EditorPage() {
   
   const editorRef = useRef<HTMLDivElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastWordCountRef = useRef(0)
   const projectRef = useRef<BRXProject | null>(null)
+  const renderedChapterIdRef = useRef<string | null>(null) 
+  const activeChapterIndexRef = useRef(0)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [liveStats, setLiveStats] = useState({ words: 0, chars: 0 })
 
   useEffect(() => {
-    const proj = getProjectByIndex(projectIndex)
+    const proj = getProject(projectId)
     if (!proj) {
       router.push('/dashboard')
       return
     }
     projectRef.current = proj
     setProject(proj)
+    const initialBody = proj.chapters[0]?.body || ''
+    setLiveStats({ words: countWords(initialBody), chars: countChars(initialBody) })
     lastWordCountRef.current = proj.meta.wordCount
-  }, [projectIndex, router])
+  }, [projectId, router])
 
   useEffect(() => {
     projectRef.current = project
   }, [project])
 
-  // Keep the contentEditable DOM in sync only when the loaded project or chapter changes.
-  // Updating innerHTML during every keystroke recreates the text node and moves the caret.
+  // The editable DOM owns the caret while typing. Only hydrate it when the chapter changes.
   useEffect(() => {
-    if (!editorRef.current || !project) return
-    editorRef.current.innerHTML = project.chapters[activeChapterIndex]?.body || ''
-  }, [activeChapterIndex, Boolean(project)])
+    activeChapterIndexRef.current = activeChapterIndex
+    const chapter = project?.chapters[activeChapterIndex]
+    if (!editorRef.current || !chapter || renderedChapterIdRef.current === chapter.id) return
+    editorRef.current.innerHTML = chapter.body || ''
+    renderedChapterIdRef.current = chapter.id
+  }, [activeChapterIndex, project])
+
+  useEffect(() => () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    if (savedStatusTimeoutRef.current) clearTimeout(savedStatusTimeoutRef.current)
+  }, [])
+
+  const syncEditorToProject = useCallback(() => {
+    const currentProject = projectRef.current
+    const editor = editorRef.current
+    const chapterIndex = activeChapterIndexRef.current
+    if (!currentProject || !editor || !currentProject.chapters[chapterIndex]) return currentProject
+
+    const body = editor.innerHTML
+    const currentChapter = currentProject.chapters[chapterIndex]
+    if (currentChapter.body === body) return currentProject
+
+    const updatedProject = {
+      ...currentProject,
+      chapters: currentProject.chapters.map((chapter, index) => index === chapterIndex
+        ? { ...chapter, body, wordCount: countWords(body), updatedAt: new Date().toISOString() }
+        : chapter)
+    }
+    projectRef.current = updatedProject
+    return updatedProject
+  }, [])
 
   const handleSave = useCallback(() => {
-    const currentProject = projectRef.current
+    const currentProject = syncEditorToProject()
     if (!currentProject) return
 
     setSaveStatus('saving')
@@ -122,11 +155,9 @@ export default function EditorPage() {
     saveProject(projectId, updatedProject)
     setProject(updatedProject)
     setTimeout(() => setSaveStatus('saved'), 500)
-  }, [projectId])
+  }, [projectId, syncEditorToProject])
 
   const scheduleAutoSave = useCallback(() => {
-    setSaveStatus('unsaved')
-    
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
@@ -149,21 +180,31 @@ export default function EditorPage() {
   }, [handleSave])
 
   const handleEditorInput = () => {
-    if (!editorRef.current) return
+    const editor = editorRef.current
+    if (!editor) return
 
-    const html = editorRef.current.innerHTML
-    setProject((current) => {
-      if (!current || !current.chapters[activeChapterIndex]) return current
-      const updatedChapters = [...current.chapters]
-      updatedChapters[activeChapterIndex] = {
-        ...updatedChapters[activeChapterIndex],
-        body: html,
-        wordCount: countWords(html),
-        updatedAt: new Date().toISOString()
+    const html = editor.innerHTML
+    const text = editor.innerText
+    const currentProject = projectRef.current
+    if (currentProject?.chapters[activeChapterIndexRef.current]) {
+      const updatedProject = {
+        ...currentProject,
+        chapters: currentProject.chapters.map((chapter, index) => index === activeChapterIndexRef.current
+          ? { ...chapter, body: html, wordCount: countWords(text), updatedAt: new Date().toISOString() }
+          : chapter)
       }
-      return { ...current, chapters: updatedChapters }
-    })
+      projectRef.current = updatedProject
+    }
     scheduleAutoSave()
+  }
+
+  const handleEditorBlur = () => {
+    if (!editorRef.current) return
+    setLiveStats({
+      words: countWords(editorRef.current.innerText),
+      chars: countChars(editorRef.current.innerText),
+    })
+    setSaveStatus('unsaved')
   }
 
   const execCommand = (command: string, value?: string) => {
@@ -174,9 +215,11 @@ export default function EditorPage() {
 
   const handleAIChat = async (message?: string) => {
     const prompt = message || aiInput
-    if (!prompt.trim() || !project) return
+    const currentProject = syncEditorToProject() || projectRef.current
+    if (!prompt.trim() || !currentProject) return
     
     setAiLoading(true)
+    setAiError(null)
     setAiInput('')
     
     const userMessage: AIMessage = {
@@ -185,11 +228,13 @@ export default function EditorPage() {
       timestamp: new Date().toISOString()
     }
     
-    const updatedHistory = [...project.aiHistory, userMessage]
-    setProject({ ...project, aiHistory: updatedHistory })
+    const updatedHistory = [...currentProject.aiHistory, userMessage]
+    const projectWithUserMessage = { ...currentProject, aiHistory: updatedHistory }
+    projectRef.current = projectWithUserMessage
+    setProject(projectWithUserMessage)
     
     try {
-      const currentContent = project.chapters[activeChapterIndex]?.body || ''
+      const currentContent = currentProject.chapters[activeChapterIndex]?.body || ''
       
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -198,10 +243,12 @@ export default function EditorPage() {
           action: 'chat',
           prompt,
           context: currentContent,
-          projectType: project.meta.projectType,
-          genre: project.meta.genre,
-          history: updatedHistory.slice(-10)
-        })
+          projectType: currentProject.meta.projectType,
+          genre: currentProject.meta.genre,
+          history: updatedHistory.slice(-10),
+          requestId: crypto.randomUUID()
+        }),
+        cache: 'no-store'
       })
       
       let assistantContent = ''
@@ -209,7 +256,12 @@ export default function EditorPage() {
         const data = await response.json()
         assistantContent = data.content || data.response || ''
       } else {
-        assistantContent = generateFallbackResponse(prompt, project.meta.projectType, project.meta.genre)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'The AI assistant could not respond.')
+      }
+
+      if (!assistantContent.trim()) {
+        throw new Error('The AI assistant returned an empty response.')
       }
       
       const assistantMessage: AIMessage = {
@@ -224,38 +276,53 @@ export default function EditorPage() {
       } : null)
       
     } catch (error) {
-      console.log('[v0] AI chat error:', error)
-      const fallbackMessage: AIMessage = {
-        role: 'assistant',
-        content: generateFallbackResponse(prompt, project.meta.projectType, project.meta.genre),
-        timestamp: new Date().toISOString()
-      }
-      
-      setProject(prev => prev ? {
-        ...prev,
-        aiHistory: [...updatedHistory, fallbackMessage]
-      } : null)
+      console.error('[v0] AI chat error:', error)
+      setAiError(error instanceof Error ? error.message : 'The AI assistant could not respond. Please try again.')
+      setProject(prev => prev ? { ...prev, aiHistory: prev.aiHistory.filter((item) => item !== userMessage) } : null)
     }
     
     setAiLoading(false)
     scheduleAutoSave()
   }
 
+  const handleSelectChapter = (nextIndex: number) => {
+    if (nextIndex === activeChapterIndex) return
+    syncEditorToProject()
+    setProject(projectRef.current)
+    setActiveChapterIndex(nextIndex)
+    const nextChapter = projectRef.current?.chapters[nextIndex]
+    setLiveStats({
+      words: countWords(nextChapter?.body || ''),
+      chars: countChars(nextChapter?.body || ''),
+    })
+  }
+
   const insertIntoEditor = (text: string) => {
-    if (!editorRef.current) return
-    
-    editorRef.current.focus()
+    const editor = editorRef.current
+    if (!editor) return
+
     const selection = window.getSelection()
-    
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0)
+    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+    const selectionIsInsideEditor = Boolean(range && editor.contains(range.commonAncestorContainer))
+
+    editor.focus()
+    if (selectionIsInsideEditor && range) {
       range.deleteContents()
-      range.insertNode(document.createTextNode(text))
-      range.collapse(false)
+      const textNode = document.createTextNode(text)
+      range.insertNode(textNode)
+      range.setStartAfter(textNode)
+      range.collapse(true)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
     } else {
-      editorRef.current.innerHTML += text
+      const endRange = document.createRange()
+      endRange.selectNodeContents(editor)
+      endRange.collapse(false)
+      selection?.removeAllRanges()
+      selection?.addRange(endRange)
+      document.execCommand('insertText', false, text)
     }
-    
+
     handleEditorInput()
   }
 
@@ -268,8 +335,8 @@ export default function EditorPage() {
   }
 
   const activeChapter = project.chapters[activeChapterIndex]
-  const wordCount = activeChapter ? countWords(activeChapter.body) : 0
-  const charCount = activeChapter ? countChars(activeChapter.body) : 0
+  const wordCount = liveStats.words || (activeChapter ? countWords(activeChapter.body) : 0)
+  const charCount = liveStats.chars || (activeChapter ? countChars(activeChapter.body) : 0)
   const readTime = estimateReadTime(wordCount)
 
   return (
@@ -436,8 +503,9 @@ export default function EditorPage() {
                   contentEditable
                   className="min-h-[60vh] font-serif text-lg leading-relaxed outline-none prose prose-lg max-w-none"
                   style={{ fontFamily: 'var(--font-lora), Georgia, serif' }}
-                  onInput={handleEditorInput}
-                  suppressContentEditableWarning
+              onInput={handleEditorInput}
+              onBlur={handleEditorBlur}
+              suppressContentEditableWarning
                   data-placeholder="Begin your story here..."
                 />
                 <style jsx>{`
@@ -465,6 +533,11 @@ export default function EditorPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Customized for {project.meta.projectType}
                   </p>
+                  {aiError && (
+                    <p role="alert" className="mt-2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                      {aiError}
+                    </p>
+                  )}
                 </div>
                 
                 <div className="p-3 border-b border-border">
@@ -550,7 +623,7 @@ export default function EditorPage() {
             <ChapterManager
               project={project}
               activeChapterIndex={activeChapterIndex}
-              onSelectChapter={setActiveChapterIndex}
+              onSelectChapter={handleSelectChapter}
               onUpdateProject={(p) => {
                 setProject(p)
                 scheduleAutoSave()

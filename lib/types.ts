@@ -84,6 +84,7 @@ export interface ProjectMeta {
 }
 
 export interface BRXProject {
+  id: string
   version: string
   app: string
   meta: ProjectMeta
@@ -184,6 +185,7 @@ export function createEmptyProject(
 ): BRXProject {
   const now = new Date().toISOString()
   return {
+    id: crypto.randomUUID(),
     version: '1.0',
     app: 'BookEr AI',
     meta: {

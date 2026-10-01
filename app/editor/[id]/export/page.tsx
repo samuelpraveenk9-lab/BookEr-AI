@@ -19,7 +19,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
-import { getProjectByIndex, saveProject, addProject, getProjects } from '@/lib/storage'
+import { getProject, saveProject, addProject, getProjects } from '@/lib/storage'
 import { exportToBRX, exportToTXT, importBRX } from '@/lib/storage'
 import { BRXProject } from '@/lib/types'
 import { toast } from 'sonner'
@@ -27,20 +27,20 @@ import { toast } from 'sonner'
 export default function ExportPage() {
   const params = useParams()
   const router = useRouter()
-  const projectIndex = parseInt(params.id as string)
+  const projectId = params.id as string
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [project, setProject] = useState<BRXProject | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
 
   useEffect(() => {
-    const proj = getProjectByIndex(projectIndex)
+    const proj = getProject(projectId)
     if (!proj) {
       router.push('/dashboard')
       return
     }
     setProject(proj)
-  }, [projectIndex, router])
+  }, [projectId, router])
 
   const handleExportBRX = async () => {
     if (!project) return
@@ -140,7 +140,7 @@ export default function ExportPage() {
         
         if (existingIndex >= 0) {
           // Replace existing
-          saveProject(`project-${existingIndex}`, imported)
+          saveProject(projectId, { ...imported, id: projectId })
           setProject(imported)
           toast.success('Project updated from .brx file')
         } else {
