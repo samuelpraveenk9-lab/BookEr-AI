@@ -39,6 +39,7 @@ export default function ReviewPage() {
   const [isReviewing, setIsReviewing] = useState(false)
   const [feedback, setFeedback] = useState<ReviewFeedback | null>(null)
   const [reviewMode, setReviewMode] = useState<'chapter' | 'custom' | 'full'>('chapter')
+  const [reviewError, setReviewError] = useState<string | null>(null)
 
   useEffect(() => {
     const proj = getProject(projectId)
@@ -50,19 +51,14 @@ export default function ReviewPage() {
   }, [projectId, router])
 
   const handleReview = async () => {
-    if (!project) return
-    
+    if (!project || isReviewing) return
     let contentToReview = ''
-    
-    if (reviewMode === 'chapter') {
-      contentToReview = project.chapters[selectedChapter]?.body || ''
-    } else if (reviewMode === 'custom') {
-      contentToReview = customText
-    } else {
-      contentToReview = project.chapters.map(ch => ch.body).join('\n\n---\n\n')
-    }
+    if (reviewMode === 'chapter') contentToReview = project.chapters[selectedChapter]?.body || ''
+    else if (reviewMode === 'custom') contentToReview = customText
+    else contentToReview = project.chapters.map(ch => ch.body).join('\n\n---\n\n')
 
     if (!contentToReview.trim()) {
+      setReviewError(null)
       setFeedback({
         strengths: ['There is no excerpt to evaluate yet.'],
         improvements: ['Add or select an excerpt before requesting a review.'],
@@ -73,7 +69,7 @@ export default function ReviewPage() {
 
     setIsReviewing(true)
     setFeedback(null)
-    
+    setReviewError(null)
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -82,22 +78,23 @@ export default function ReviewPage() {
           action: 'review',
           content: contentToReview,
           projectType: project.meta.projectType,
-          genre: project.meta.genre
-        })
+          genre: project.meta.genre,
+        }),
+        cache: 'no-store',
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setFeedback(data.feedback || generateFallbackReview(project.meta.genre, contentToReview))
-      } else {
-        setFeedback(generateFallbackReview(project.meta.genre, contentToReview))
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'The AI review request failed.')
+      const result = data.feedback as ReviewFeedback | undefined
+      if (!result || !Array.isArray(result.strengths) || !Array.isArray(result.improvements) || !Array.isArray(result.suggestions)) {
+        throw new Error('The AI returned an invalid review. Please try again.')
       }
+      setFeedback(result)
     } catch (error) {
-      console.log('[v0] Review error:', error)
-      setFeedback(generateFallbackReview(project.meta.genre, contentToReview))
+      console.error('[BookEr AI] Review request failed:', error)
+      setReviewError(error instanceof Error ? error.message : 'The AI review failed. Please try again.')
+    } finally {
+      setIsReviewing(false)
     }
-    
-    setIsReviewing(false)
   }
 
   const downloadFeedback = () => {
@@ -234,6 +231,8 @@ export default function ReviewPage() {
               </div>
             )}
 
+            {reviewError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{reviewError}</p>}
+
             <Button 
               onClick={handleReview} 
               disabled={isReviewing}
@@ -335,27 +334,4 @@ export default function ReviewPage() {
       </main>
     </div>
   )
-}
-
-function generateFallbackReview(genre: string, content: string): ReviewFeedback {
-  const excerpt = content.trim()
-  const firstSentence = excerpt.split(/[.!?]+/).map((part) => part.trim()).find(Boolean) || 'the opening'
-  const words = excerpt.split(/\s+/).filter(Boolean).length
-  return {
-    strengths: [
-      `The excerpt opens with a concrete narrative starting point: “${firstSentence.slice(0, 120)}${firstSentence.length > 120 ? '…' : ''}”.`,
-      `The ${words}-word passage gives the reader a focused sample of the current voice and scene direction.`,
-      `The ${genre.toLowerCase()} framing can become more distinctive as the character conflict develops.`
-    ],
-    improvements: [
-      'Make the viewpoint character’s immediate want and obstacle unmistakable in the scene.',
-      'Add specific sensory details that reveal the character’s emotional state instead of only describing the setting.',
-      'Check each paragraph for a change in tension, information, or decision so the scene keeps moving.'
-    ],
-    suggestions: [
-      `Revise the opening around the tension implied by “${firstSentence.slice(0, 80)}${firstSentence.length > 80 ? '…' : ''}”.`,
-      'Give the character a concrete choice by the end of the excerpt, even if the larger conflict remains unresolved.',
-      'Read the passage aloud and replace vague verbs or repeated sentence openings with sharper, more varied phrasing.'
-    ]
-  }
 }
