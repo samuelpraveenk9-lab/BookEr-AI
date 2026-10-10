@@ -34,19 +34,21 @@ export default function ExportPage() {
   const [exporting, setExporting] = useState<string | null>(null)
 
   useEffect(() => {
-    const proj = getProject(projectId)
-    if (!proj) {
-      router.push('/dashboard')
-      return
+    let cancelled = false
+    const loadProject = async () => {
+      await syncProjectsFromCloud()
+      if (cancelled) return
+      const proj = getProject(projectId)
+      if (!proj) { router.replace('/dashboard'); return }
+      setProject(proj)
     }
-    setProject(proj)
+    void loadProject()
+    return () => { cancelled = true }
   }, [projectId, router])
 
   const handleExportBRX = async () => {
     if (!project) return
     setExporting('brx')
-    
-    await new Promise(resolve => setTimeout(resolve, 500))
     
     const content = exportToBRX(project)
     const blob = new Blob([content], { type: 'application/json' })
@@ -64,8 +66,6 @@ export default function ExportPage() {
   const handleExportTXT = async () => {
     if (!project) return
     setExporting('txt')
-    
-    await new Promise(resolve => setTimeout(resolve, 500))
     
     const content = exportToTXT(project)
     const blob = new Blob([content], { type: 'text/plain' })
@@ -89,7 +89,7 @@ export default function ExportPage() {
     printContent.innerHTML = `
       <html>
         <head>
-          <title>${project.meta.title}</title>
+          <title>${escapeHTML(project.meta.title)}</title>
           <style>
             body { font-family: Georgia, serif; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 40px; }
             h1 { text-align: center; margin-bottom: 10px; }
@@ -99,11 +99,11 @@ export default function ExportPage() {
           </style>
         </head>
         <body>
-          <h1>${project.meta.title}</h1>
-          <p class="meta">${project.meta.projectType} · ${project.meta.genre}</p>
+          <h1>${escapeHTML(project.meta.title)}</h1>
+          <p class="meta">${escapeHTML(project.meta.projectType)} · ${escapeHTML(project.meta.genre)}</p>
           ${project.chapters.map(ch => `
-            <h2>${ch.title}</h2>
-            ${ch.body || '<p><em>No content</em></p>'}
+            <h2>${escapeHTML(ch.title)}</h2>
+            ${ch.body ? sanitizeRichText(ch.body) : '<p><em>No content</em></p>'}
           `).join('')}
         </body>
       </html>
@@ -141,13 +141,13 @@ export default function ExportPage() {
         if (existingIndex >= 0) {
           // Replace existing
           saveProject(projectId, { ...imported, id: projectId })
-          setProject(imported)
+          setProject({ ...imported, id: projectId })
           toast.success('Project updated from .brx file')
         } else {
           // Add as new
           const newId = addProject(imported)
           toast.success('Project imported from .brx file')
-          router.push(`/editor/${newId.replace('project-', '')}`)
+          router.push(`/editor/${newId}`)
         }
       } else {
         toast.error('Invalid .brx file')
@@ -348,4 +348,24 @@ export default function ExportPage() {
       </main>
     </div>
   )
+}
+
+function escapeHTML(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function sanitizeRichText(html: string): string {
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+  const allowedTags = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'del', 'mark', 'sub', 'sup', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'ul', 'ol', 'li', 'div', 'span', 'a'])
+  const dangerousTags = new Set(['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form'])
+  parsed.body.querySelectorAll('*').forEach((element) => {
+    const tag = element.tagName.toLowerCase()
+    if (!allowedTags.has(tag)) {
+      if (dangerousTags.has(tag)) element.remove()
+      else element.replaceWith(...Array.from(element.childNodes))
+      return
+    }
+    for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name)
+  })
+  return parsed.body.innerHTML
 }
