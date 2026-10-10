@@ -1,41 +1,70 @@
-# Supabase setup for BookEr AI
+# BookEr AI: Supabase and Vercel setup
 
-## Existing project
+## Existing backend
 
-The Supabase workspace contains a project named **BookerAI** (`eecefbxelrtrtyeceeln`, region `ap-northeast-1`). It was reported as **inactive** when inspected. Restore it in the Supabase dashboard before applying the migration or testing API connectivity:
-
+BookEr AI uses the existing Supabase project **BookerAI** (project ref eecefbxelrtrtyeceeln, region ap-northeast-1):
 https://supabase.com/dashboard/project/eecefbxelrtrtyeceeln
 
-Do not create a replacement project unless you intend to change the backend target.
+The application has been wired to Supabase Auth and the cloud tables. Verify the project is active before testing authentication or sync.
 
-## Environment variables
+## Vercel environment variables
 
-Configure these variables in your local `.env.local` and in the hosting provider environment:
+In the linked Vercel project, configure these for Production, Preview, and Development as appropriate:
 
 - `NEXT_PUBLIC_SUPABASE_URL=https://eecefbxelrtrtyeceeln.supabase.co`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY=` or the project publishable key from Supabase API settings
-- `OPENAI_API_KEY=` (server-side secret; never use a `NEXT_PUBLIC_` prefix)
-- `OPENAI_MODEL=gpt-4o-mini` (optional)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: the project's public anon/publishable key
+- `OPENAI_API_KEY`: your OpenAI API key (server-side secret; required for real AI responses)
+- `OPENAI_MODEL=gpt-4o-mini` (optional; default model)
+- `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase service-role secret, required only for account deletion
 
-Never commit `.env.local`, an OpenAI API key, a Supabase service-role key, or any other secret. The public Supabase key should only be exposed when Row Level Security is correctly configured.
+Never prefix secret keys with `NEXT_PUBLIC_`, commit them to Git, or paste them into client-side code. The service-role key bypasses RLS and must only be used by server-side code.
 
-## Database migration
+After changing Vercel environment variables, redeploy the project for the new values to take effect.
 
-After the project is restored, apply `supabase/migrations/20261010120000_bookerai_core.sql` in the Supabase SQL Editor, or apply it through the Supabase CLI migration workflow.
+## Database
 
-It creates:
-- `booker_projects`: per-user project JSON with a composite user/project key
-- `booker_settings`: per-user settings JSON
-- `booker_daily_stats`: per-user daily writing statistics
+The migration is stored at `supabase/migrations/20261010120000_bookerai_core.sql`. It defines:
 
-All three tables enable Row Level Security and grant access only to authenticated users. Policies constrain operations to rows whose `user_id` matches `auth.uid()`.
+- `booker_projects`: project JSON, keyed by user and project ID
+- `booker_settings`: settings JSON per user
+- `booker_daily_stats`: per-user writing statistics by date
 
-After applying the migration, verify that all three tables have RLS enabled and test that one authenticated user cannot read or modify another user’s rows.
+RLS policies restrict rows to the authenticated user. Confirm the migration is applied in the Supabase SQL Editor and verify that all three tables have RLS enabled.
 
-## Authentication provider configuration
+## Email/password authentication
 
-Email/password sign-in can use Supabase Auth once the app auth UI is connected to the Supabase client. For Google sign-in, enable Google under **Authentication → Sign In / Providers**, configure its OAuth client credentials, and add the deployed callback URL to the Supabase redirect allow list. The callback route and auth UI integration are still implementation work; enabling the provider alone does not make the current UI authenticate users.
+The sign-in and registration forms call Supabase Auth. If email confirmation is enabled, registration may require the user to confirm their email before signing in. Phone login requires phone auth and SMS verification to be configured in Supabase.
 
-## Current limitation
+## Google OAuth setup
 
-Existing projects, settings, and writing statistics remain in browser `localStorage` until cloud sync and an import/migration path are implemented. Do not delete browser data while migrating. The database schema alone does not sync local data.
+1. In Supabase, open **Authentication → Sign In / Providers → Google** and enable Google.
+2. Enter the OAuth client ID and client secret from your Google Cloud OAuth configuration.
+3. Add the Supabase-provided callback URL to the authorized redirect URIs in Google Cloud.
+4. Add these application callback URLs to Supabase's redirect URL allow list:
+   - `http://localhost:3000/auth/callback` for local development
+   - `https://YOUR-VERCEL-DOMAIN/auth/callback` for the deployed app
+5. Save the provider settings and test Google sign-in on the deployed domain.
+
+The application callback retrieves the signed-in user from Supabase before storing the session.
+
+## Data sync and migration
+
+After sign-in, the app merges browser projects with cloud projects and uploads local projects. Settings and daily statistics also sync. Keep the original browser data until you confirm it has appeared in the cloud and on another device.
+
+Cloud sync is best-effort in the current client implementation: inspect the browser console and Supabase logs if data does not appear. Do not treat a successful local save as proof that a cloud request succeeded.
+
+## Account deletion
+
+The server endpoint `/api/account` verifies the caller's Supabase access token before deleting that user's Auth record. Configure `SUPABASE_SERVICE_ROLE_KEY` as a server-only Vercel environment variable for this feature. If it is absent, the endpoint returns a configuration error rather than claiming deletion succeeded.
+
+## Required verification
+
+After configuring the external keys/providers:
+
+- Register with an email account and verify confirmation behavior.
+- Sign in and sign out; verify unauthenticated dashboard access redirects to sign-in.
+- Create a project, edit a chapter, reload, and confirm the project remains.
+- Check the three tables in Supabase and test on a second browser/device.
+- Test Google OAuth after enabling the provider.
+- Test an AI synopsis and an AI Studio request with a valid OpenAI key.
+- Test password update and account deletion only after confirming the account is disposable.
