@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown, ChevronRight, Sparkles, MapPin, Users, Wand2, Clock, Languages, BookOpen, Loader2, Send } from 'lucide-react'
 import { BRXProject, WorldNotes } from '@/lib/types'
+import { toast } from 'sonner'
 
 interface WorldBuilderProps {
   project: BRXProject
@@ -49,8 +50,8 @@ export default function WorldBuilder({ project, onUpdateProject }: WorldBuilderP
   }
 
   const generateContent = async (key: keyof WorldNotes) => {
+    if (isGenerating) return
     setIsGenerating(key)
-    
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -61,55 +62,53 @@ export default function WorldBuilder({ project, onUpdateProject }: WorldBuilderP
           projectType: project.meta.projectType,
           genre: project.meta.genre,
           title: project.meta.title,
-          existingNotes: project.worldNotes
-        })
+          existingNotes: project.worldNotes,
+        }),
+        cache: 'no-store',
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        updateWorldNote(key, data.content || '')
-      } else {
-        updateWorldNote(key, generateFallbackWorldContent(key, project.meta.genre, project.meta.title))
-      }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'World content generation failed.')
+      const content = String(data.content || '').trim()
+      if (!content) throw new Error('The AI returned empty world-building content.')
+      updateWorldNote(key, content)
     } catch (error) {
-      console.log('[v0] World content generation error:', error)
-      updateWorldNote(key, generateFallbackWorldContent(key, project.meta.genre, project.meta.title))
+      console.error('[BookEr AI] World content generation failed:', error)
+      toast.error(error instanceof Error ? error.message : 'World content generation failed.')
+    } finally {
+      setIsGenerating(null)
     }
-    
-    setIsGenerating(null)
   }
 
   const handleAiChat = async () => {
-    if (!aiChat.trim()) return
-    
+    const question = aiChat.trim()
+    if (!question || aiLoading) return
     setAiLoading(true)
-    
+    setAiResponse('')
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'world_building_chat',
-          prompt: aiChat,
+          prompt: question,
           projectType: project.meta.projectType,
           genre: project.meta.genre,
-          worldNotes: project.worldNotes
-        })
+          worldNotes: project.worldNotes,
+        }),
+        cache: 'no-store',
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setAiResponse(data.content || data.response || '')
-      } else {
-        setAiResponse(generateFallbackWorldResponse(aiChat, project.meta.genre))
-      }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'World-building assistant failed.')
+      const content = String(data.content || data.response || '').trim()
+      if (!content) throw new Error('The AI returned an empty response.')
+      setAiResponse(content)
+      setAiChat('')
     } catch (error) {
-      console.log('[v0] World chat error:', error)
-      setAiResponse(generateFallbackWorldResponse(aiChat, project.meta.genre))
+      console.error('[BookEr AI] World-building chat failed:', error)
+      toast.error(error instanceof Error ? error.message : 'World-building assistant failed.')
+    } finally {
+      setAiLoading(false)
     }
-    
-    setAiChat('')
-    setAiLoading(false)
   }
 
   return (
@@ -234,21 +233,4 @@ export default function WorldBuilder({ project, onUpdateProject }: WorldBuilderP
       </div>
     </div>
   )
-}
-
-function generateFallbackWorldContent(key: string, genre: string, title: string): string {
-  const templates: Record<string, string> = {
-    locations: `The world of "${title}" features several key locations:\n\n• The Central Hub - A place where paths converge and destinies intertwine\n• The Wild Frontier - Unexplored territories holding secrets and dangers\n• The Ancient Grounds - Sites of historical significance and forgotten power\n• The Hidden Sanctuary - A refuge for those who seek shelter from the world`,
-    factions: `Several factions vie for influence in this ${genre.toLowerCase()} world:\n\n• The Establishment - Those who maintain the current order\n• The Rebels - Those who seek to change everything\n• The Neutrals - Those who walk their own path\n• The Ancients - Remnants of a previous era`,
-    magicSystem: `The ${genre.toLowerCase()} elements of this world follow certain rules:\n\n• Source: Where power originates\n• Limitations: What cannot be done\n• Cost: What must be paid for use\n• Mastery: How abilities are developed`,
-    timeline: `Key events in the world's history:\n\n• The Beginning - How it all started\n• The First Age - Early developments\n• The Great Change - A pivotal moment\n• The Present Era - Where the story takes place`,
-    languages: `Communication in this world:\n\n• Common Tongue - The standard language\n• Ancient Speech - Used for formal or magical purposes\n• Regional Dialects - Variations across locations\n• Secret Codes - Hidden communications`,
-    rules: `The fundamental rules of this world:\n\n• Natural Laws - How the physical world operates\n• Social Customs - How people interact\n• Power Dynamics - Who holds influence and why\n• Forbidden Acts - What is never done`
-  }
-  
-  return templates[key] || `Notes about ${key} in your ${genre.toLowerCase()} world.`
-}
-
-function generateFallbackWorldResponse(question: string, genre: string): string {
-  return `That's an interesting aspect of your ${genre.toLowerCase()} world to explore. Consider how this element connects to your characters' journeys and the overall themes of your story. Think about the history behind it, how different factions might view it, and what conflicts or opportunities it creates. Would you like me to help develop this further in any specific direction?`
 }

@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Sparkles, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { BRXProject, Character, CHARACTER_ROLES, CharacterRole, COVER_EMOJIS } from '@/lib/types'
+import { toast } from 'sonner'
 
 interface CharacterManagerProps {
   project: BRXProject
@@ -107,10 +108,8 @@ export default function CharacterManager({ project, onUpdateProject }: Character
   }
 
   const generateField = async (field: string) => {
-    if (!name) return
-    
+    if (!name.trim() || isGenerating) return
     setIsGenerating(field)
-    
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -122,45 +121,27 @@ export default function CharacterManager({ project, onUpdateProject }: Character
           role,
           projectType: project.meta.projectType,
           genre: project.meta.genre,
-          existingData: { appearance, personality, backstory, goals, flaws }
-        })
+          existingData: { appearance, personality, backstory, goals, flaws },
+        }),
+        cache: 'no-store',
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        const content = data.content || data[field] || ''
-        
-        switch (field) {
-          case 'appearance': setAppearance(content); break
-          case 'personality': setPersonality(content); break
-          case 'backstory': setBackstory(content); break
-          case 'goals': setGoals(content); break
-          case 'flaws': setFlaws(content); break
-        }
-      } else {
-        // Fallback generation
-        const fallback = generateFallbackCharacterField(field, name, role, project.meta.genre)
-        switch (field) {
-          case 'appearance': setAppearance(fallback); break
-          case 'personality': setPersonality(fallback); break
-          case 'backstory': setBackstory(fallback); break
-          case 'goals': setGoals(fallback); break
-          case 'flaws': setFlaws(fallback); break
-        }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Character generation failed.')
+      const content = String(data.content || data[field] || '').trim()
+      if (!content) throw new Error('The AI returned an empty character field.')
+      switch (field) {
+        case 'appearance': setAppearance(content); break
+        case 'personality': setPersonality(content); break
+        case 'backstory': setBackstory(content); break
+        case 'goals': setGoals(content); break
+        case 'flaws': setFlaws(content); break
       }
     } catch (error) {
-      console.log('[v0] Character field generation error:', error)
-      const fallback = generateFallbackCharacterField(field, name, role, project.meta.genre)
-      switch (field) {
-        case 'appearance': setAppearance(fallback); break
-        case 'personality': setPersonality(fallback); break
-        case 'backstory': setBackstory(fallback); break
-        case 'goals': setGoals(fallback); break
-        case 'flaws': setFlaws(fallback); break
-      }
+      console.error('[BookEr AI] Character generation failed:', error)
+      toast.error(error instanceof Error ? error.message : 'Character generation failed. Please try again.')
+    } finally {
+      setIsGenerating(null)
     }
-    
-    setIsGenerating(null)
   }
 
   return (
@@ -339,16 +320,4 @@ export default function CharacterManager({ project, onUpdateProject }: Character
       )}
     </div>
   )
-}
-
-function generateFallbackCharacterField(field: string, name: string, role: string, genre: string): string {
-  const templates: Record<string, string> = {
-    appearance: `${name} has a distinctive presence that immediately draws attention. Their features reflect their ${role.toLowerCase()} nature in this ${genre.toLowerCase()} tale—eyes that hold untold stories, a bearing that speaks of their journey, and subtle details that hint at their true character.`,
-    personality: `${name} possesses a complex personality befitting a ${role.toLowerCase()}. They are driven yet contemplative, strong yet vulnerable. Their interactions with others reveal layers of depth, shaped by experiences both triumphant and tragic.`,
-    backstory: `${name}'s past is woven with threads of both light and shadow. Born into circumstances that would shape their destiny, they faced challenges that forged their character. Key moments from their history continue to influence their present choices.`,
-    goals: `${name} seeks to fulfill a purpose greater than themselves. Their immediate objectives serve a larger vision—one that drives them forward through every obstacle. What they truly desire may not always align with what they pursue.`,
-    flaws: `Despite their strengths, ${name} struggles with inner demons. Their greatest weakness often stems from their greatest strength taken too far. These imperfections make them human and create tension in their relationships.`
-  }
-  
-  return templates[field] || `Details about ${name}'s ${field} in this ${genre.toLowerCase()} story.`
 }
