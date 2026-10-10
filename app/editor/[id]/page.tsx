@@ -410,7 +410,7 @@ export default function EditorPage() {
               variant="outline"
               size="icon"
               onClick={() => setShowAIPanel(!showAIPanel)}
-              className="hidden md:flex"
+              className="flex"
             >
               {showAIPanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
             </Button>
@@ -544,22 +544,26 @@ export default function EditorPage() {
 
             {/* AI Panel */}
             {showAIPanel && (
-              <div className="w-80 border-l border-border bg-card flex flex-col hidden md:flex">
-                <div className="p-4 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    <span className="font-semibold text-foreground">AI Assistant</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Customized for {project.meta.projectType}
-                  </p>
-                  {aiError && (
-                    <p role="alert" className="mt-2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
-                      {aiError}
+              <div className="fixed inset-0 z-50 w-full border-l border-border bg-card flex flex-col md:static md:inset-auto md:z-auto md:w-80 md:shrink-0">
+                <div className="p-4 border-b border-border flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      <span className="font-semibold text-foreground">AI Assistant</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Customized for {project.meta.projectType}
                     </p>
-                  )}
+                    {aiError && (
+                      <p role="alert" className="mt-2 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                        {aiError}
+                      </p>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setShowAIPanel(false)} aria-label="Close AI assistant">
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                
                 <div className="p-3 border-b border-border">
                   <div className="flex flex-wrap gap-2">
                     {AI_QUICK_ACTIONS.map((action) => (
