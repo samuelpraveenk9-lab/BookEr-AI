@@ -43,7 +43,7 @@ import {
 } from 'lucide-react'
 import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings, getUser } from '@/lib/storage'
 import { getAuthHeaders } from '@/lib/supabase'
-import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
+import { BRXProject, countWords, countChars, estimateReadTime, AIMessage, UserSettings } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
 import ChapterManager from '@/components/editor/chapter-manager'
@@ -80,6 +80,7 @@ export default function EditorPage() {
   const activeChapterIndexRef = useRef(0)
   const [aiError, setAiError] = useState<string | null>(null)
   const [liveStats, setLiveStats] = useState({ words: 0, chars: 0 })
+  const [writingSettings, setWritingSettings] = useState<UserSettings['writing']>({ defaultFont: 'Lora', defaultFontSize: 18, lineHeight: 1.8, theme: 'light' })
 
   useEffect(() => {
     let cancelled = false
@@ -89,6 +90,7 @@ export default function EditorPage() {
       if (cancelled) return
       if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
       const proj = getProject(projectId)
+      setWritingSettings(getSettings().writing)
       if (!proj) {
         router.replace('/dashboard')
         return
@@ -525,8 +527,16 @@ export default function EditorPage() {
                 <div
                   ref={editorRef}
                   contentEditable
-                  className="min-h-[60vh] font-serif text-lg leading-relaxed outline-none prose prose-lg max-w-none"
-                  style={{ fontFamily: 'var(--font-lora), Georgia, serif' }}
+                  className={`min-h-[60vh] outline-none prose prose-lg max-w-none ${writingSettings.theme === 'dark' ? 'prose-invert' : ''}`}
+                  style={{
+                    fontFamily: writingSettings.defaultFont === 'Lora' ? 'var(--font-lora), Georgia, serif' : writingSettings.defaultFont === 'Geist' ? 'var(--font-geist-sans), Arial, sans-serif' : writingSettings.defaultFont,
+                    fontSize: `${writingSettings.defaultFontSize}px`,
+                    lineHeight: writingSettings.lineHeight,
+                    backgroundColor: writingSettings.theme === 'sepia' ? '#f4ecd8' : writingSettings.theme === 'dark' ? '#1f2937' : undefined,
+                    color: writingSettings.theme === 'sepia' ? '#3b3024' : writingSettings.theme === 'dark' ? '#f3f4f6' : undefined,
+                    padding: '1.25rem',
+                    borderRadius: '0.5rem',
+                  }}
               onInput={handleEditorInput}
               onBlur={handleEditorBlur}
               suppressContentEditableWarning
