@@ -250,8 +250,8 @@ export default function DashboardPage() {
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {projects.map((project, index) => (
-                  <Link key={index} href={`/editor/${index}`}>
+                {projects.map((project) => (
+                  <Link key={project.id} href={`/editor/${project.id}`}>
                     <Card className="border-border hover:border-primary/50 transition-colors cursor-pointer h-full">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
