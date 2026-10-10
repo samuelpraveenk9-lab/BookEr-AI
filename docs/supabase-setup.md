@@ -53,7 +53,7 @@ After sign-in, the app merges browser projects with cloud projects and uploads l
 
 Cloud sync is best-effort in the current client implementation: inspect the browser console and Supabase logs if data does not appear. Do not treat a successful local save as proof that a cloud request succeeded.
 
-## Account deletion
+## Additional authentication security\n\nSupabase's security advisor reports that leaked-password protection is disabled. In the Supabase dashboard, open Authentication security/password protection settings and enable the compromised-password check if available on the project's plan. Re-run the security advisor after changing it.\n\n## Account deletion
 
 The server endpoint `/api/account` verifies the caller's Supabase access token before deleting that user's Auth record. Configure `SUPABASE_SERVICE_ROLE_KEY` as a server-only Vercel environment variable for this feature. If it is absent, the endpoint returns a configuration error rather than claiming deletion succeeded.
 
