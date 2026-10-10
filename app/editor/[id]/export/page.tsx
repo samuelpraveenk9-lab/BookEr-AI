@@ -19,7 +19,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
-import { getProject, saveProject, addProject, getProjects } from '@/lib/storage'
+import { getProject, saveProject, addProject, getProjects, syncProjectsFromCloud } from '@/lib/storage'
 import { exportToBRX, exportToTXT, importBRX } from '@/lib/storage'
 import { BRXProject } from '@/lib/types'
 import { toast } from 'sonner'
