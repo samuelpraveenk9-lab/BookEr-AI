@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BookOpen, Mail, Phone, Chrome } from 'lucide-react'
-import { signInWithPassword, signUpWithPassword, startGoogleOAuth } from '@/lib/supabase'
+import { signInWithPassword, signUpWithPassword, startGoogleOAuth, verifyPhoneSignup } from '@/lib/supabase'
 
 export default function AuthPage() {
   const router = useRouter()
@@ -17,6 +17,8 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [authError, setAuthError] = useState('')
   const [authNotice, setAuthNotice] = useState('')
+  const [pendingPhone, setPendingPhone] = useState('')
+  const [phoneOtp, setPhoneOtp] = useState('')
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -53,14 +55,29 @@ export default function AuthPage() {
     try {
       const result = await signUpWithPassword(identifier, password, name, authMethod)
       if (result.access_token && result.user?.id) router.replace('/dashboard')
-      else setAuthNotice(authMethod === 'email'
-        ? 'Account created. Check your email to confirm the account, then sign in.'
-        : 'Account request submitted. Complete the phone verification configured in Supabase, then sign in.')
+      else if (authMethod === 'phone') {
+        setPendingPhone(identifier)
+        setAuthNotice('Enter the SMS verification code sent to your phone.')
+      } else {
+        setAuthNotice('Account created. Check your email to confirm the account, then sign in.')
+      }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Account creation failed. Please try again.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVerifyPhone = async () => {
+    if (!pendingPhone || !phoneOtp.trim()) { setAuthError('Enter the SMS verification code.'); return }
+    setAuthError('')
+    setIsLoading(true)
+    try {
+      await verifyPhoneSignup(pendingPhone, phoneOtp.trim())
+      router.replace('/dashboard')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Phone verification failed.')
+    } finally { setIsLoading(false) }
   }
 
   const handleGoogleAuth = () => {
@@ -229,14 +246,30 @@ export default function AuthPage() {
                     id="reg-password"
                     name="password"
                     type="password"
+                    autoComplete="new-password"
                     placeholder="Create a password"
                     required
+                    disabled={authMethod === 'phone' && Boolean(pendingPhone)}
                   />
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Creating account...' : 'Create Account'}
-                </Button>
+                {authMethod === 'phone' && pendingPhone && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-otp">SMS verification code</Label>
+                      <Input id="phone-otp" name="phone-otp" inputMode="numeric" autoComplete="one-time-code" value={phoneOtp} onChange={(event) => setPhoneOtp(event.target.value)} placeholder="Enter the code" required />
+                    </div>
+                    <Button type="button" className="w-full" onClick={handleVerifyPhone} disabled={isLoading || !phoneOtp.trim()}>
+                      {isLoading ? 'Verifying...' : 'Verify Phone'}
+                    </Button>
+                  </div>
+                )}
+
+                {!pendingPhone && (
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+                )}
               </form>
             </TabsContent>
 

@@ -94,3 +94,10 @@ export async function updatePassword(newPassword: string): Promise<void> {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.msg || data.message || 'Password could not be updated.')
 }
+
+export async function verifyPhoneSignup(phone: string, token: string): Promise<SupabaseSession> {
+  const data = await authRequest('verify', { phone, token, type: 'sms' }) as SupabaseSession
+  if (!data.access_token || !data.user?.id) throw new Error('Phone verification did not return a session.')
+  storeSession(data)
+  return data
+}
