@@ -65,11 +65,14 @@ export default function SettingsPage() {
   const handleSave = async (section: string) => {
     if (!settings) return
     setIsSaving(true)
-    
-    saveSettings(settings)
-    
-    setIsSaving(false)
-    toast.success(`${section} settings saved`)
+    try {
+      await saveSettings(settings)
+      toast.success(getUser()?.isLoggedIn ? `${section} settings saved and synced.` : `${section} settings saved on this device.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Settings could not be synchronized.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleUpdatePassword = async () => {

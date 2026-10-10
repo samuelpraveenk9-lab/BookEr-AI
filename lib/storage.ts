@@ -247,15 +247,17 @@ export function getSettings(): UserSettings {
   return stored ? { ...getDefaultSettings(), ...JSON.parse(stored) } : getDefaultSettings()
 }
 
-export function saveSettings(settings: UserSettings): void {
+export async function saveSettings(settings: UserSettings): Promise<void> {
   if (typeof window === 'undefined') return
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
   const session = getStoredSession()
-  if (session) void supabaseRest('booker_settings?on_conflict=user_id', {
+  if (!session) return
+  const result = await supabaseRest('booker_settings?on_conflict=user_id', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ user_id: session.user.id, settings, updated_at: new Date().toISOString() }),
-  }).catch((error) => console.error('[BookEr AI] Cloud settings sync failed:', error))
+  })
+  if (!result) throw new Error('Sign in again to synchronize settings with the cloud.')
 }
 
 export async function syncSettingsFromCloud(): Promise<UserSettings> {
