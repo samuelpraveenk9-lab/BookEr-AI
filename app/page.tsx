@@ -72,22 +72,22 @@ const steps = [
   }
 ]
 
-const testimonials = [
+const workflowHighlights = [
   {
-    quote: "BookEr AI has transformed my writing process. The AI suggestions are incredibly helpful without being intrusive.",
-    author: "Sarah Chen",
-    role: "Fantasy Author"
+    title: 'Plan your story',
+    description: 'Set up a project with its format, genre, synopsis, and daily writing goal.',
+    icon: BookOpen,
   },
   {
-    quote: "Finally, a tool that understands manga script formatting. The panel script feature is a game-changer.",
-    author: "Kenji Tanaka",
-    role: "Manga Creator"
+    title: 'Draft and revise',
+    description: 'Write chapter by chapter, track word counts, and save your work as you go.',
+    icon: PenTool,
   },
   {
-    quote: "The character and world building tools have made my light novel series so much more consistent.",
-    author: "Emma Rodriguez",
-    role: "Light Novel Writer"
-  }
+    title: 'Get AI assistance',
+    description: 'Ask for brainstorming, revision suggestions, and story feedback when AI is configured.',
+    icon: Sparkles,
+  },
 ]
 
 export default function HomePage() {
@@ -206,27 +206,20 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
+      {/* Workflow Highlights */}
       <section className="py-20 bg-card">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Loved by Authors
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              See what writers are saying about BookEr AI.
-            </p>
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">A Workspace for Your Stories</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">A straightforward workflow for planning, drafting, and improving your writing.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map((testimonial) => (
-              <Card key={testimonial.author} className="border-border">
+            {workflowHighlights.map((item) => (
+              <Card key={item.title} className="border-border">
                 <CardContent className="pt-6">
-                  <Quote className="h-8 w-8 text-primary/30 mb-4" />
-                  <p className="text-foreground mb-4">{testimonial.quote}</p>
-                  <div>
-                    <p className="font-semibold text-foreground">{testimonial.author}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.role}</p>
-                  </div>
+                  <item.icon className="h-8 w-8 text-primary mb-4" />
+                  <h3 className="font-semibold text-foreground mb-2">{item.title}</h3>
+                  <p className="text-muted-foreground">{item.description}</p>
                 </CardContent>
               </Card>
             ))}
@@ -242,7 +235,7 @@ export default function HomePage() {
               Ready to Start Writing?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Join thousands of authors using BookEr AI to write better stories.
+              Create a project, develop your draft, and keep your writing organized.
             </p>
             <Button size="lg" asChild className="gap-2">
               <Link href="/auth">
