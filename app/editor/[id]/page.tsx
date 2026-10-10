@@ -38,7 +38,8 @@ import {
   Globe,
   Layers,
   Star,
-  FileOutput
+  FileOutput,
+  X
 } from 'lucide-react'
 import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings } from '@/lib/storage'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
