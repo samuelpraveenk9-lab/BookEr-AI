@@ -24,6 +24,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { PROJECT_TYPES, ProjectType } from '@/lib/types'
+import { getSettings } from '@/lib/storage'
 
 interface AITool {
   id: string
@@ -122,6 +123,7 @@ export default function StudioPage() {
     setInput('')
     setRequestError('')
     setIsLoading(true)
+    const aiSettings = getSettings().ai
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -132,6 +134,8 @@ export default function StudioPage() {
           prompt: requestText,
           projectType,
           systemPrompt: activeTool.systemPrompt,
+          responseLength: aiSettings.responseLength,
+          writingStyle: aiSettings.writingStyle,
           requestId: crypto.randomUUID(),
         }),
         cache: 'no-store',
