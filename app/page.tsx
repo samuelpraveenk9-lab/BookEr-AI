@@ -14,8 +14,7 @@ import {
   ArrowRight,
   PenTool,
   Wand2,
-  Download,
-  Quote
+  Download
 } from 'lucide-react'
 
 const features = [
