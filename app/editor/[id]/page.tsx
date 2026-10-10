@@ -66,7 +66,7 @@ export default function EditorPage() {
   const [project, setProject] = useState<BRXProject | null>(null)
   const [activeChapterIndex, setActiveChapterIndex] = useState(0)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const [showAIPanel, setShowAIPanel] = useState(true)
+  const [showAIPanel, setShowAIPanel] = useState(false)
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   
