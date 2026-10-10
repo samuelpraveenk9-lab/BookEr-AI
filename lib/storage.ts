@@ -156,7 +156,7 @@ export async function syncDailyStatsFromCloud(): Promise<DailyStats[]> {
     const merged = new Map(local.map((stat) => [stat.date, stat.wordsWritten]))
     for (const stat of remote) merged.set(stat.stat_date, Math.max(merged.get(stat.stat_date) || 0, stat.words_written || 0))
     const stats = [...merged.entries()].map(([date, wordsWritten]) => ({ date, wordsWritten })).sort((a, b) => a.date.localeCompare(b.date))
-    localStorage.setItem(STATS_KEY, JSON.stringify(stats))
+    saveDailyStats(stats)
     return stats
   } catch (error) {
     console.error('[BookEr AI] Cloud stats load failed:', error)

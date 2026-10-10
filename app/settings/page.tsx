@@ -22,7 +22,7 @@ import {
   Save,
   Trash2
 } from 'lucide-react'
-import { getSettings, saveSettings, getUser, logoutUser } from '@/lib/storage'
+import { getSettings, saveSettings, getUser, logoutUser, syncSettingsFromCloud } from '@/lib/storage'
 import { getStoredSession, updatePassword } from '@/lib/supabase'
 import { UserSettings } from '@/lib/types'
 import { toast } from 'sonner'
@@ -39,12 +39,16 @@ export default function SettingsPage() {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   useEffect(() => {
-    const user = getUser()
-    if (!user?.isLoggedIn) {
-      router.push('/auth')
-      return
+    let cancelled = false
+    const loadSettings = async () => {
+      const user = getUser()
+      if (!user?.isLoggedIn) { router.replace('/auth'); return }
+      setSettings(getSettings())
+      const cloudSettings = await syncSettingsFromCloud()
+      if (!cancelled) setSettings(cloudSettings)
     }
-    setSettings(getSettings())
+    void loadSettings()
+    return () => { cancelled = true }
   }, [router])
 
   const updateSettings = (section: keyof UserSettings, field: string, value: unknown) => {
