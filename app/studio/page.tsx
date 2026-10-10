@@ -112,15 +112,16 @@ export default function StudioPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [requestError, setRequestError] = useState('')
 
   const handleSend = async () => {
-    if (!input.trim() || !activeTool) return
-    
-    const userMessage: Message = { role: 'user', content: input }
+    const requestText = input.trim()
+    if (!requestText || !activeTool || isLoading) return
+    const userMessage: Message = { role: 'user', content: requestText }
     setMessages(prev => [...prev, userMessage])
     setInput('')
+    setRequestError('')
     setIsLoading(true)
-    
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -128,42 +129,36 @@ export default function StudioPage() {
         body: JSON.stringify({
           action: 'studio_tool',
           toolId: activeTool.id,
-          prompt: input,
+          prompt: requestText,
           projectType,
-          systemPrompt: activeTool.systemPrompt
-        })
+          systemPrompt: activeTool.systemPrompt,
+          requestId: crypto.randomUUID(),
+        }),
+        cache: 'no-store',
       })
-      
-      let content = ''
-      if (response.ok) {
-        const data = await response.json()
-        content = data.content || data.response || ''
-      } else {
-        content = generateFallbackResponse(activeTool.id, input, projectType)
-      }
-      
-      const assistantMessage: Message = { role: 'assistant', content }
-      setMessages(prev => [...prev, assistantMessage])
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'The AI request failed.')
+      const content = String(data.content || data.response || '').trim()
+      if (!content) throw new Error('The AI returned an empty response. Please try again.')
+      setMessages(prev => [...prev, { role: 'assistant', content }])
     } catch (error) {
-      console.log('[v0] Studio tool error:', error)
-      const assistantMessage: Message = { 
-        role: 'assistant', 
-        content: generateFallbackResponse(activeTool.id, input, projectType)
-      }
-      setMessages(prev => [...prev, assistantMessage])
+      console.error('[BookEr AI] Studio tool error:', error)
+      setRequestError(error instanceof Error ? error.message : 'AI could not respond. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
-    
-    setIsLoading(false)
   }
 
   const openTool = (tool: AITool) => {
     setActiveTool(tool)
     setMessages([])
+    setRequestError('')
   }
 
   const closeTool = () => {
     setActiveTool(null)
     setMessages([])
+    setRequestError('')
   }
 
   return (
@@ -268,7 +263,7 @@ export default function StudioPage() {
               </div>
             </ScrollArea>
             
-            <div className="pt-4 border-t border-border">
+            <div className="pt-4 border-t border-border">\n              {requestError && <p role="alert" className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{requestError}</p>}
               <div className="flex gap-2">
                 <Textarea
                   value={input}
