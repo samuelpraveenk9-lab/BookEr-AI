@@ -42,6 +42,7 @@ import {
   X
 } from 'lucide-react'
 import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings } from '@/lib/storage'
+import { getAuthHeaders } from '@/lib/supabase'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
@@ -250,7 +251,7 @@ export default function EditorPage() {
       
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'chat',
           prompt,

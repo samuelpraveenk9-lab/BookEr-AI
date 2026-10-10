@@ -33,6 +33,23 @@ type AIRequest = z.infer<typeof aiRequestSchema>
 export async function POST(request: NextRequest) {
   let body = {} as AIRequest
   try {
+    const authorization = request.headers.get('authorization') || ''
+    const accessToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!accessToken) return NextResponse.json({ error: 'Sign in to use AI features.' }, { status: 401 })
+    if (!supabaseUrl || !anonKey) return NextResponse.json({ error: 'Authentication service is not configured.' }, { status: 503 })
+    let authResponse: Response
+    try {
+      authResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+        headers: { apikey: anonKey, Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store',
+      })
+    } catch {
+      return NextResponse.json({ error: 'Could not verify your session. Try again.' }, { status: 503 })
+    }
+    if (!authResponse.ok) return NextResponse.json({ error: 'Your session is invalid or expired. Sign in again.' }, { status: 401 })
+
     const parsed = aiRequestSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid AI request', details: parsed.error.flatten() }, { status: 400 })

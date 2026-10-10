@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown, ChevronRight, Sparkles, MapPin, Users, Wand2, Clock, Languages, BookOpen, Loader2, Send } from 'lucide-react'
 import { BRXProject, WorldNotes } from '@/lib/types'
+import { getAuthHeaders } from '@/lib/supabase'
 import { toast } from 'sonner'
 
 interface WorldBuilderProps {
@@ -55,7 +56,7 @@ export default function WorldBuilder({ project, onUpdateProject }: WorldBuilderP
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'generate_world_content',
           section: key,

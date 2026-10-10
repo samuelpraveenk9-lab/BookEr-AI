@@ -117,3 +117,9 @@ export async function verifyPhoneSignup(phone: string, token: string): Promise<S
   storeSession(data)
   return data
 }
+
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const session = await refreshSessionIfNeeded()
+  if (!session) throw new Error('Your session has expired. Sign in again to use AI.')
+  return { Authorization: `Bearer ${session.access_token}` }
+}

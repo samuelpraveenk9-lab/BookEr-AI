@@ -27,6 +27,7 @@ import {
   Genre
 } from '@/lib/types'
 import { addProject, persistProjectToCloud } from '@/lib/storage'
+import { getAuthHeaders } from '@/lib/supabase'
 
 export default function CreateProjectPage() {
   const router = useRouter()
@@ -55,7 +56,7 @@ export default function CreateProjectPage() {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({ action: 'generate_synopsis', title: title.trim(), projectType, genre }),
         cache: 'no-store',
       })

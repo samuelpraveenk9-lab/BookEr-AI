@@ -20,6 +20,7 @@ import {
   FileText
 } from 'lucide-react'
 import { getProject } from '@/lib/storage'
+import { getAuthHeaders } from '@/lib/supabase'
 import { BRXProject } from '@/lib/types'
 
 interface ReviewFeedback {
@@ -73,7 +74,7 @@ export default function ReviewPage() {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'review',
           content: contentToReview,

@@ -24,6 +24,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { PROJECT_TYPES, ProjectType } from '@/lib/types'
+import { getAuthHeaders } from '@/lib/supabase'
 import { getSettings } from '@/lib/storage'
 
 interface AITool {
@@ -127,7 +128,7 @@ export default function StudioPage() {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'studio_tool',
           toolId: activeTool.id,

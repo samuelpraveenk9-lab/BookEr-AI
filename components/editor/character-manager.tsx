@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Sparkles, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { BRXProject, Character, CHARACTER_ROLES, CharacterRole, COVER_EMOJIS } from '@/lib/types'
+import { getAuthHeaders } from '@/lib/supabase'
 import { toast } from 'sonner'
 
 interface CharacterManagerProps {
@@ -113,7 +114,7 @@ export default function CharacterManager({ project, onUpdateProject }: Character
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'generate_character_field',
           field,
