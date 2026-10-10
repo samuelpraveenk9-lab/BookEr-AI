@@ -80,3 +80,17 @@ export async function signOutSupabase() {
   if(!session)return
   try {const {url,key}=config();await fetch(`${url}/auth/v1/logout`,{method:'POST',headers:{apikey:key,Authorization:`Bearer ${session.access_token}`},cache:'no-store'})} catch {}
 }
+
+export async function updatePassword(newPassword: string): Promise<void> {
+  const session = await refreshSessionIfNeeded()
+  if (!session) throw new Error('Your session has expired. Sign in again.')
+  const { url, key } = config()
+  const response = await fetch(`${url}/auth/v1/user`, {
+    method: 'PUT',
+    headers: { apikey: key, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: newPassword }),
+    cache: 'no-store',
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.msg || data.message || 'Password could not be updated.')
+}
