@@ -1,3 +1,4 @@
+import { getStoredSession, supabaseRest, signOutSupabase } from './supabase'
 import { BRXProject, DailyStats, UserSettings } from './types'
 
 const PROJECTS_KEY = 'booker_projects'
@@ -29,11 +30,56 @@ export function getProjects(): BRXProject[] {
 
 export function saveProjects(projects: BRXProject[]): void {
   if (typeof window === 'undefined') return
+  try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects)) }
+  catch (error) { console.error('[BookEr AI] Unable to save projects locally:', error) }
+  void syncProjectsToCloud(projects)
+}
+
+async function syncProjectsToCloud(projects: BRXProject[]): Promise<void> {
+  const session = getStoredSession()
+  if (!session || projects.length === 0) return
   try {
+    await supabaseRest('booker_projects?on_conflict=user_id,id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(projects.map((project) => ({
+        user_id: session.user.id,
+        id: project.id,
+        project,
+        updated_at: project.meta.updatedAt || new Date().toISOString(),
+      }))),
+    })
+  } catch (error) { console.error('[BookEr AI] Cloud project sync failed:', error) }
+}
+
+export async function syncProjectsFromCloud(): Promise<BRXProject[]> {
+  if (typeof window === 'undefined' || !getStoredSession()) return getProjects()
+  try {
+    const result = await supabaseRest('booker_projects?select=id,project,updated_at&order=updated_at.desc')
+    if (!result) return getProjects()
+    const remote = await result.response.json() as Array<{ project: BRXProject; updated_at: string }>
+    const merged = new Map<string, BRXProject>()
+    for (const project of getProjects()) merged.set(project.id, project)
+    for (const row of remote) {
+      const project = row?.project
+      if (!project?.id) continue
+      const local = merged.get(project.id)
+      const localTime = local?.meta?.updatedAt ? Date.parse(local.meta.updatedAt) : 0
+      const remoteTime = project.meta?.updatedAt ? Date.parse(project.meta.updatedAt) : Date.parse(row.updated_at || '') || 0
+      if (!local || remoteTime >= localTime) merged.set(project.id, project)
+    }
+    const projects = [...merged.values()]
     localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects))
+    await syncProjectsToCloud(projects)
+    return projects
   } catch (error) {
-    console.error('[v0] Unable to save projects:', error)
+    console.error('[BookEr AI] Cloud project load failed:', error)
+    return getProjects()
   }
+}
+
+export async function persistProjectToCloud(project: BRXProject): Promise<void> {
+  await syncProjectsToCloud([project])
 }
 
 export function getProject(id: string): BRXProject | null {
@@ -72,6 +118,10 @@ export function deleteProject(id: string): void {
   const projects = getProjects()
   const nextProjects = projects.filter((project) => project.id !== id)
   if (nextProjects.length !== projects.length) saveProjects(nextProjects)
+  void (async () => {
+    try { await supabaseRest(`booker_projects?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+    catch (error) { console.error('[BookEr AI] Cloud project deletion failed:', error) }
+  })()
 }
 
 export function getDailyStats(): DailyStats[] {
@@ -88,6 +138,30 @@ export function getDailyStats(): DailyStats[] {
 export function saveDailyStats(stats: DailyStats[]): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(STATS_KEY, JSON.stringify(stats))
+  const session = getStoredSession()
+  if (session && stats.length) void supabaseRest('booker_daily_stats?on_conflict=user_id,stat_date', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(stats.map((stat) => ({ user_id: session.user.id, stat_date: stat.date, words_written: Math.max(0, stat.wordsWritten), updated_at: new Date().toISOString() }))),
+  }).catch((error) => console.error('[BookEr AI] Cloud stats sync failed:', error))
+}
+
+export async function syncDailyStatsFromCloud(): Promise<DailyStats[]> {
+  const local = getDailyStats()
+  if (!getStoredSession()) return local
+  try {
+    const result = await supabaseRest('booker_daily_stats?select=stat_date,words_written&order=stat_date.asc')
+    if (!result) return local
+    const remote = await result.response.json() as Array<{ stat_date: string; words_written: number }>
+    const merged = new Map(local.map((stat) => [stat.date, stat.wordsWritten]))
+    for (const stat of remote) merged.set(stat.stat_date, Math.max(merged.get(stat.stat_date) || 0, stat.words_written || 0))
+    const stats = [...merged.entries()].map(([date, wordsWritten]) => ({ date, wordsWritten })).sort((a, b) => a.date.localeCompare(b.date))
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats))
+    return stats
+  } catch (error) {
+    console.error('[BookEr AI] Cloud stats load failed:', error)
+    return local
+  }
 }
 
 export function addWordsToday(words: number): void {
@@ -176,12 +250,48 @@ export function getSettings(): UserSettings {
 export function saveSettings(settings: UserSettings): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  const session = getStoredSession()
+  if (session) void supabaseRest('booker_settings?on_conflict=user_id', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ user_id: session.user.id, settings, updated_at: new Date().toISOString() }),
+  }).catch((error) => console.error('[BookEr AI] Cloud settings sync failed:', error))
 }
 
-export function getUser(): { name: string; email: string; isLoggedIn: boolean } | null {
+export async function syncSettingsFromCloud(): Promise<UserSettings> {
+  const local = getSettings()
+  if (!getStoredSession()) return local
+  try {
+    const result = await supabaseRest('booker_settings?select=settings&limit=1')
+    if (!result) return local
+    const rows = await result.response.json() as Array<{ settings: UserSettings }>
+    if (!rows[0]?.settings) return local
+    const remote = rows[0].settings
+    const merged = {
+      ...local, ...remote,
+      profile: { ...local.profile, ...remote.profile },
+      writing: { ...local.writing, ...remote.writing },
+      ai: { ...local.ai, ...remote.ai },
+      export: { ...local.export, ...remote.export },
+    }
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged))
+    return merged
+  } catch (error) {
+    console.error('[BookEr AI] Cloud settings load failed:', error)
+    return local
+  }
+}
+
+export function getUser(): { name: string; email: string; isLoggedIn: boolean; id?: string } | null {
   if (typeof window === 'undefined') return null
-  const stored = localStorage.getItem(USER_KEY)
-  return stored ? JSON.parse(stored) : null
+  const session = getStoredSession()
+  if (!session) return null
+  try {
+    const stored = localStorage.getItem(USER_KEY)
+    const cached = stored ? JSON.parse(stored) : {}
+    return { name: cached.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Author',
+      email: cached.email || session.user.email || session.user.phone || '', isLoggedIn: true, id: session.user.id }
+  } catch { return { name: session.user.email?.split('@')[0] || 'Author', email: session.user.email || '', isLoggedIn: true, id: session.user.id } }
 }
 
 export function saveUser(user: { name: string; email: string; isLoggedIn: boolean }): void {
@@ -191,7 +301,7 @@ export function saveUser(user: { name: string; email: string; isLoggedIn: boolea
 
 export function logoutUser(): void {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(USER_KEY)
+  void signOutSupabase()
 }
 
 export function exportToBRX(project: BRXProject): string {
