@@ -23,6 +23,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { getSettings, saveSettings, getUser, logoutUser } from '@/lib/storage'
+import { getStoredSession, updatePassword } from '@/lib/supabase'
 import { UserSettings } from '@/lib/types'
 import { toast } from 'sonner'
 
@@ -32,6 +33,10 @@ export default function SettingsPage() {
   const router = useRouter()
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   useEffect(() => {
     const user = getUser()
@@ -57,20 +62,45 @@ export default function SettingsPage() {
     if (!settings) return
     setIsSaving(true)
     
-    await new Promise(resolve => setTimeout(resolve, 500))
     saveSettings(settings)
     
     setIsSaving(false)
     toast.success(`${section} settings saved`)
   }
 
-  const handleDeleteAccount = () => {
-    if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+  const handleUpdatePassword = async () => {
+    if (newPassword.length < 8) { toast.error('Use a password with at least 8 characters.'); return }
+    if (newPassword !== confirmPassword) { toast.error('The passwords do not match.'); return }
+    setIsUpdatingPassword(true)
+    try {
+      await updatePassword(newPassword)
+      setNewPassword('')
+      setConfirmPassword('')
+      toast.success('Password updated.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Password could not be updated.')
+    } finally { setIsUpdatingPassword(false) }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!confirm('Permanently delete your account and cloud data? This cannot be undone.')) return
+    const session = getStoredSession()
+    if (!session) { toast.error('Please sign in again before deleting your account.'); return }
+    setIsDeletingAccount(true)
+    try {
+      const response = await fetch('/api/account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Account deletion failed.')
       logoutUser()
-      localStorage.clear()
-      router.push('/')
-      toast.success('Account deleted')
-    }
+      router.replace('/')
+      toast.success('Account deleted.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Account deletion failed.')
+    } finally { setIsDeletingAccount(false) }
   }
 
   if (!settings) {
@@ -346,6 +376,9 @@ export default function SettingsPage() {
                 <Input
                   id="new-password"
                   type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
                   placeholder="Enter new password"
                 />
               </div>
@@ -355,13 +388,16 @@ export default function SettingsPage() {
                 <Input
                   id="confirm-password"
                   type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Confirm new password"
                 />
               </div>
               
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => toast.success('Password updated')}>
-                  Update Password
+                <Button variant="outline" onClick={handleUpdatePassword} disabled={isUpdatingPassword || !newPassword || !confirmPassword}>
+                  {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                 </Button>
               </div>
               
@@ -369,10 +405,11 @@ export default function SettingsPage() {
                 <Button 
                   variant="destructive" 
                   onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount}
                   className="gap-2"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete Account
+                  {isDeletingAccount ? 'Deleting...' : 'Delete Account'}
                 </Button>
                 <p className="text-sm text-muted-foreground mt-2">
                   This will permanently delete your account and all your projects.
