@@ -237,7 +237,8 @@ export default function EditorPage() {
       timestamp: new Date().toISOString()
     }
     
-    const updatedHistory = [...currentProject.aiHistory, userMessage]
+    const previousHistory = currentProject.aiHistory || []
+    const updatedHistory = [...previousHistory, userMessage]
     const projectWithUserMessage = { ...currentProject, aiHistory: updatedHistory }
     projectRef.current = projectWithUserMessage
     setProject(projectWithUserMessage)
@@ -254,7 +255,7 @@ export default function EditorPage() {
           context: currentContent,
           projectType: currentProject.meta.projectType,
           genre: currentProject.meta.genre,
-          history: updatedHistory.slice(-10),
+          history: previousHistory.slice(-8),
           requestId: crypto.randomUUID()
         }),
         cache: 'no-store'
@@ -279,15 +280,22 @@ export default function EditorPage() {
         timestamp: new Date().toISOString()
       }
       
-      setProject(prev => prev ? {
-        ...prev,
-        aiHistory: [...updatedHistory, assistantMessage]
-      } : null)
+      const projectWithResponse = {
+        ...(projectRef.current || currentProject),
+        aiHistory: [...updatedHistory, assistantMessage],
+      }
+      projectRef.current = projectWithResponse
+      setProject(projectWithResponse)
       
     } catch (error) {
       console.error('[v0] AI chat error:', error)
       setAiError(error instanceof Error ? error.message : 'The AI assistant could not respond. Please try again.')
-      setProject(prev => prev ? { ...prev, aiHistory: prev.aiHistory.filter((item) => item !== userMessage) } : null)
+      const projectAfterFailure = {
+        ...(projectRef.current || currentProject),
+        aiHistory: previousHistory,
+      }
+      projectRef.current = projectAfterFailure
+      setProject(projectAfterFailure)
     }
     
     setAiLoading(false)
