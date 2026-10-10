@@ -265,7 +265,7 @@ export default function AuthPage() {
                   </div>
                 )}
 
-                {!pendingPhone && (
+                {!(authMethod === 'phone' && pendingPhone) && (
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Creating account...' : 'Create Account'}
                   </Button>
