@@ -40,7 +40,7 @@ import {
   Star,
   FileOutput
 } from 'lucide-react'
-import { getProject, saveProject, addWordsToday, syncProjectsFromCloud } from '@/lib/storage'
+import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings } from '@/lib/storage'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
@@ -245,6 +245,7 @@ export default function EditorPage() {
     
     try {
       const currentContent = currentProject.chapters[activeChapterIndex]?.body || ''
+      const aiSettings = getSettings().ai
       
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -256,6 +257,8 @@ export default function EditorPage() {
           projectType: currentProject.meta.projectType,
           genre: currentProject.meta.genre,
           history: previousHistory.slice(-8),
+          responseLength: aiSettings.responseLength,
+          writingStyle: aiSettings.writingStyle,
           requestId: crypto.randomUUID()
         }),
         cache: 'no-store'
