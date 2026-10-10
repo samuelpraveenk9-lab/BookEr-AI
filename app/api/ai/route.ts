@@ -25,6 +25,7 @@ const aiRequestSchema = z.object({
   responseLength: z.enum(['short', 'medium', 'long']).optional(),
   writingStyle: z.enum(['literary', 'casual', 'genre-specific']).optional(),
   requestId: z.string().uuid().optional(),
+  systemPrompt: z.string().trim().max(2000).optional(),
 })
 
 type AIRequest = z.infer<typeof aiRequestSchema>
@@ -74,6 +75,11 @@ export async function POST(request: NextRequest) {
         }),
         signal: controller.signal,
       })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return NextResponse.json({ error: 'The AI request took too long. Try a shorter prompt or less context.' }, { status: 504 })
+      }
+      throw error
     } finally {
       clearTimeout(timeout)
     }
@@ -139,7 +145,8 @@ function buildPrompt(body: AIRequest) {
       prompt = `Act as a candid developmental editor. Analyze ONLY the excerpt below, not a hypothetical book. Ground every point in an observable detail from the excerpt, quoting a short phrase when useful. Be honest and balanced: do not invent strengths, do not use generic advice, and do not repeat stock feedback. Evaluate story and storywriting, including hook, character desire/conflict, stakes, scene purpose, pacing, structure, point of view, dialogue, imagery, specificity, sentence rhythm, and show-versus-tell when relevant. Return exactly these headings: Strengths, Areas to Improve, Specific Suggestions. Under each heading provide 3-5 concise bullet points. If the excerpt is too short to judge something, say so explicitly.\n\nEXCERPT TO ANALYZE:\n${body.content || '(No excerpt provided)'}`
       break
     case 'studio_tool':
-      prompt = `Project type: ${projectType}\n\nUser request: ${prompt}`
+      if (body.systemPrompt) systemInstruction = `${systemInstruction}\n\nTool-specific instructions: ${body.systemPrompt}`
+      prompt = `Project type: ${projectType}\nGenre: ${genre}\n\nUser request: ${prompt}`
       break
   }
   return { systemInstruction, prompt }
