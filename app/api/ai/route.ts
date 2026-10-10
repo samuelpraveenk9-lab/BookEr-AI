@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === 'review') {
-      const feedback = parseReviewResponse(text, body.content || '')
+      const feedback = parseReviewResponse(text)
+      if (!feedback) return NextResponse.json({ error: 'The AI review format was invalid. Please retry the review.' }, { status: 502 })
       return NextResponse.json({ feedback })
     }
     if (body.action === 'generate_synopsis') {
@@ -169,7 +170,7 @@ function buildPrompt(body: AIRequest) {
   return { systemInstruction, prompt }
 }
 
-function parseReviewResponse(text: string, content: string) {
+function parseReviewResponse(text: string): { strengths: string[]; improvements: string[]; suggestions: string[] } | null {
   const normalized = text.replace(/\r/g, '')
   const sectionPattern = /(?:^|\n)\s*(?:#{1,3}\s*)?(Strengths|Areas to Improve|Specific Suggestions|Suggestions)\s*:?[ \t]*\n?/gi
   const matches = [...normalized.matchAll(sectionPattern)]
@@ -194,35 +195,7 @@ function parseReviewResponse(text: string, content: string) {
     suggestions: points(sections['specific suggestions'] || sections['suggestions']),
   }
 
-  return feedback.strengths.length && feedback.improvements.length && feedback.suggestions.length
-    ? feedback
-    : buildExcerptFallback(content)
-}
-
-function buildExcerptFallback(content: string) {
-  const excerpt = content.trim()
-  const sentences = excerpt.split(/[.!?]+/).map((sentence) => sentence.trim()).filter(Boolean)
-  const words = excerpt.split(/\s+/).filter(Boolean)
-  const hasDialogue = /[“”\"]/.test(excerpt)
-  const hasSensoryDetail = /\b(heard|saw|felt|smelled|tasted|cold|warm|bright|dark|rough|soft|wind|rain)\b/i.test(excerpt)
-  const firstSentence = sentences[0]
-  return {
-    strengths: [
-      firstSentence ? `The opening establishes a clear starting point: “${firstSentence.slice(0, 140)}${firstSentence.length > 140 ? '…' : ''}”` : 'The excerpt is too short to identify a reliable narrative strength.',
-      `${words.length} words give enough material to assess the passage’s immediate voice and focus.`,
-      hasDialogue ? 'Dialogue is present, giving the scene an opportunity for character-specific tension and subtext.' : 'The passage stays focused on narration rather than switching between several voices.',
-    ],
-    improvements: [
-      sentences.length < 3 ? 'The excerpt is very short, so the scene’s larger story movement and stakes are not yet clear.' : 'Clarify what the viewpoint character wants in this moment and what may prevent them from getting it.',
-      hasSensoryDetail ? 'Some sensory detail is present; connect it more directly to the viewpoint character’s emotion or immediate goal.' : 'Add concrete sensory detail tied to the viewpoint character so the setting feels specific rather than generalized.',
-      hasDialogue ? 'Check that each line of dialogue changes the power dynamic or reveals new information.' : 'Consider adding a specific action, reaction, or line of dialogue to break up exposition where the scene slows.',
-    ],
-    suggestions: [
-      firstSentence ? `Revise the first paragraph around the central tension introduced by “${firstSentence.slice(0, 90)}${firstSentence.length > 90 ? '…' : ''}”.` : 'Paste a longer excerpt so the review can assess story structure and prose patterns honestly.',
-      'Write one sentence naming the character’s immediate objective, then revise the scene so each beat pressures that objective.',
-      'Read the passage aloud and cut repeated modifiers, vague verbs, and sentences that do not change the reader’s understanding.',
-    ],
-  }
+  return feedback.strengths.length && feedback.improvements.length && feedback.suggestions.length ? feedback : null
 }
 
 function formatHistory(history: AIRequest['history']) {
