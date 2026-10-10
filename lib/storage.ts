@@ -5,6 +5,7 @@ const PROJECTS_KEY = 'booker_projects'
 const STATS_KEY = 'booker_stats'
 const SETTINGS_KEY = 'booker_settings'
 const USER_KEY = 'booker_user'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function getProjects(): BRXProject[] {
   if (typeof window === 'undefined') return []
@@ -15,7 +16,7 @@ export function getProjects(): BRXProject[] {
     if (!Array.isArray(parsed)) return []
     let changed = false
     const projects = parsed.filter(Boolean).map((project: BRXProject) => {
-      if (!project.id) {
+      if (!project.id || !UUID_PATTERN.test(project.id)) {
         changed = true
         return { ...project, id: crypto.randomUUID() }
       }
@@ -108,7 +109,7 @@ export function saveProject(id: string, project: BRXProject): void {
 
 export function addProject(project: BRXProject): string {
   const projects = getProjects()
-  const normalizedProject = project.id ? project : { ...project, id: crypto.randomUUID() }
+  const normalizedProject = project.id && UUID_PATTERN.test(project.id) ? project : { ...project, id: crypto.randomUUID() }
   projects.push(normalizedProject)
   saveProjects(projects)
   return normalizedProject.id
