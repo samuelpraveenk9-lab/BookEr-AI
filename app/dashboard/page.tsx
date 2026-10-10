@@ -23,7 +23,7 @@ import {
   Menu,
   X
 } from 'lucide-react'
-import { getProjects, getUser, getTotalWords, getWritingStreak, logoutUser } from '@/lib/storage'
+import { getProjects, getUser, getTotalWords, getWritingStreak, logoutUser, syncProjectsFromCloud, syncDailyStatsFromCloud } from '@/lib/storage'
 import { BRXProject, TARGET_WORD_COUNTS } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -44,15 +44,22 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    const userData = getUser()
-    if (!userData?.isLoggedIn) {
-      router.push('/auth')
-      return
+    let cancelled = false
+    const loadDashboard = async () => {
+      const userData = getUser()
+      if (!userData?.isLoggedIn) { router.replace('/auth'); return }
+      setUser(userData)
+      setProjects(getProjects())
+      setTotalWords(getTotalWords())
+      setStreak(getWritingStreak())
+      const [cloudProjects] = await Promise.all([syncProjectsFromCloud(), syncDailyStatsFromCloud()])
+      if (cancelled) return
+      setProjects(cloudProjects)
+      setTotalWords(cloudProjects.reduce((total, project) => total + (project.meta.wordCount || 0), 0))
+      setStreak(getWritingStreak())
     }
-    setUser(userData)
-    setProjects(getProjects())
-    setTotalWords(getTotalWords())
-    setStreak(getWritingStreak())
+    void loadDashboard()
+    return () => { cancelled = true }
   }, [router])
 
   const handleLogout = () => {
