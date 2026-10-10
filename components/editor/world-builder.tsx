@@ -88,7 +88,7 @@ export default function WorldBuilder({ project, onUpdateProject }: WorldBuilderP
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
         body: JSON.stringify({
           action: 'world_building_chat',
           prompt: question,
