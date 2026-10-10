@@ -20,6 +20,22 @@ export function getStoredSession(): SupabaseSession | null {
 export function storeSession(session: SupabaseSession) {
   if (typeof window === 'undefined') return
   if (session.expires_in && !session.expires_at) session.expires_at = Math.floor(Date.now()/1000)+session.expires_in
+
+  // Keep browser-side project data isolated when a different account signs in on the same device.
+  const ownerKey = 'booker_data_owner'
+  const previousOwner = localStorage.getItem(ownerKey)
+  const nextOwner = session.user.id
+  const dataKeys = ['booker_projects', 'booker_stats', 'booker_settings']
+  if (previousOwner && previousOwner !== nextOwner) {
+    for (const key of dataKeys) {
+      const current = localStorage.getItem(key)
+      if (current !== null) localStorage.setItem(`${key}_user_${previousOwner}`, current)
+      const nextAccountData = localStorage.getItem(`${key}_user_${nextOwner}`)
+      if (nextAccountData !== null) localStorage.setItem(key, nextAccountData)
+      else localStorage.removeItem(key)
+    }
+  }
+  localStorage.setItem(ownerKey, nextOwner)
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
   localStorage.setItem(USER_KEY, JSON.stringify({ id: session.user.id, name: session.user.user_metadata?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Author', email: session.user.email || session.user.phone || '', isLoggedIn: true }))
 }
