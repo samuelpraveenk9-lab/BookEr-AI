@@ -253,6 +253,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
   const session = getStoredSession()
   if (!session) return
+  localStorage.setItem(USER_KEY, JSON.stringify({ id: session.user.id, name: settings.profile.name || 'Author', email: settings.profile.email || session.user.email || '', isLoggedIn: true }))
   const result = await supabaseRest('booker_settings?on_conflict=user_id', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -278,6 +279,8 @@ export async function syncSettingsFromCloud(): Promise<UserSettings> {
       export: { ...local.export, ...remote.export },
     }
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged))
+    const session = getStoredSession()
+    if (session) localStorage.setItem(USER_KEY, JSON.stringify({ id: session.user.id, name: merged.profile.name || 'Author', email: merged.profile.email || session.user.email || '', isLoggedIn: true }))
     return merged
   } catch (error) {
     console.error('[BookEr AI] Cloud settings load failed:', error)
