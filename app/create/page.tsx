@@ -26,12 +26,14 @@ import {
   ProjectType,
   Genre
 } from '@/lib/types'
-import { addProject } from '@/lib/storage'
+import { addProject, persistProjectToCloud } from '@/lib/storage'
 
 export default function CreateProjectPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
   
   // Form state
   const [title, setTitle] = useState('')
@@ -47,55 +49,52 @@ export default function CreateProjectPage() {
   const canProceedStep2 = true // Synopsis is optional
 
   const handleGenerateSynopsis = async () => {
-    if (!title) return
-    
+    if (!title.trim() || isGenerating) return
     setIsGenerating(true)
-    
+    setErrorMessage('')
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'generate_synopsis',
-          title,
-          projectType,
-          genre
-        })
+        body: JSON.stringify({ action: 'generate_synopsis', title: title.trim(), projectType, genre }),
+        cache: 'no-store',
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setSynopsis(data.synopsis || data.content || '')
-      }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Synopsis generation failed.')
+      const generated = String(data.synopsis || data.content || '').trim()
+      if (!generated) throw new Error('The AI returned an empty synopsis.')
+      setSynopsis(generated)
     } catch (error) {
-      console.log('[v0] Error generating synopsis:', error)
-      // Fallback synopsis
-      setSynopsis(`A compelling ${genre.toLowerCase()} ${projectType.toLowerCase()} that follows an unforgettable journey. ${title} weaves together themes of courage, discovery, and transformation in a story that will captivate readers from the very first page.`)
+      setErrorMessage(error instanceof Error ? error.message : 'Could not generate a synopsis.')
+    } finally {
+      setIsGenerating(false)
     }
-    
-    setIsGenerating(false)
   }
 
-  const handleCreate = () => {
-    const finalGoal = customGoal ? parseInt(customGoal) : dailyGoal
-    
-    const project = createEmptyProject(
-      title,
-      projectType,
-      genre,
-      coverEmoji,
-      synopsis,
-      series || null,
-      finalGoal
-    )
-    
-    const projectId = addProject(project)
-    router.push(`/editor/${projectId.replace('project-', '')}`)
+  const handleCreate = async () => {
+    if (!title.trim() || isCreating) return
+    const parsedGoal = customGoal.trim() ? Number.parseInt(customGoal, 10) : dailyGoal
+    if (!Number.isFinite(parsedGoal) || parsedGoal < 1) {
+      setErrorMessage('Enter a daily writing goal greater than zero.')
+      return
+    }
+    setIsCreating(true)
+    setErrorMessage('')
+    try {
+      const project = createEmptyProject(title.trim(), projectType, genre, coverEmoji, synopsis.trim(), series.trim() || null, parsedGoal)
+      const projectId = addProject(project)
+      await persistProjectToCloud({ ...project, id: projectId })
+      router.push(`/editor/${projectId}`)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Project creation failed. Please try again.')
+      setIsCreating(false)
+    }
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {errorMessage && <div role="alert" className="container mx-auto px-4 pt-4"><p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p></div>}
+            {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
@@ -361,7 +360,7 @@ export default function CreateProjectPage() {
                   <ArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
-                <Button onClick={handleCreate} className="gap-2">
+                <Button onClick={handleCreate} disabled={isCreating || !title.trim()} className="gap-2">
                   <Check className="h-4 w-4" />
                   Create Project
                 </Button>
