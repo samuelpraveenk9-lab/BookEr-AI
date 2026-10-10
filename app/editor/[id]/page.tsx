@@ -40,7 +40,7 @@ import {
   Star,
   FileOutput
 } from 'lucide-react'
-import { getProject, saveProject, addWordsToday } from '@/lib/storage'
+import { getProject, saveProject, addWordsToday, syncProjectsFromCloud } from '@/lib/storage'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
 import WorldBuilder from '@/components/editor/world-builder'
@@ -80,16 +80,23 @@ export default function EditorPage() {
   const [liveStats, setLiveStats] = useState({ words: 0, chars: 0 })
 
   useEffect(() => {
-    const proj = getProject(projectId)
-    if (!proj) {
-      router.push('/dashboard')
-      return
+    let cancelled = false
+    const loadProject = async () => {
+      await syncProjectsFromCloud()
+      if (cancelled) return
+      const proj = getProject(projectId)
+      if (!proj) {
+        router.replace('/dashboard')
+        return
+      }
+      projectRef.current = proj
+      setProject(proj)
+      const initialBody = proj.chapters[0]?.body || ''
+      setLiveStats({ words: countWords(initialBody), chars: countChars(initialBody) })
+      lastWordCountRef.current = proj.meta.wordCount
     }
-    projectRef.current = proj
-    setProject(proj)
-    const initialBody = proj.chapters[0]?.body || ''
-    setLiveStats({ words: countWords(initialBody), chars: countChars(initialBody) })
-    lastWordCountRef.current = proj.meta.wordCount
+    void loadProject()
+    return () => { cancelled = true }
   }, [projectId, router])
 
   useEffect(() => {
