@@ -87,8 +87,7 @@ export default function ExportPage() {
     setExporting('pdf')
     
     // Open print dialog for PDF
-    const printContent = document.createElement('div')
-    printContent.innerHTML = `
+    const printContent = `<!DOCTYPE html>
       <html>
         <head>
           <title>${escapeHTML(project.meta.title)}</title>
@@ -113,11 +112,15 @@ export default function ExportPage() {
     
     const printWindow = window.open('', '_blank')
     if (printWindow) {
-      printWindow.document.write(printContent.innerHTML)
-      printWindow.document.close()
       printWindow.onload = () => {
+        printWindow.focus()
         printWindow.print()
       }
+      printWindow.document.open()
+      printWindow.document.write(printContent)
+      printWindow.document.close()
+    } else {
+      toast.error('Allow pop-ups to open the print window, then try again.')
     }
     
     setExporting(null)
