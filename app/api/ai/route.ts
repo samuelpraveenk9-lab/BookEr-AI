@@ -1,4 +1,3 @@
-import { generateText, gateway } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -46,13 +45,58 @@ export async function POST(request: NextRequest) {
       : body.writingStyle === 'genre-specific'
         ? ` Lean into recognizable ${body.genre || 'genre'} conventions without using clichés.`
         : ' Use precise, literary language when appropriate.'
-    const { text } = await generateText({
-      model: gateway('google/gemini-2.5-flash'),
-      system: `${systemInstruction}${styleInstruction}${requestContext}`,
-      prompt,
-      temperature: 0.8,
-      maxOutputTokens: responseTokens,
-    })
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'AI service is not configured. Add OPENAI_API_KEY to the server environment.' },
+        { status: 503 },
+      )
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 50_000)
+    let openAIResponse: Response
+    try {
+      openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: `${systemInstruction}${styleInstruction}${requestContext}` },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.8,
+          max_tokens: responseTokens,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    if (!openAIResponse.ok) {
+      const status = openAIResponse.status
+      console.error('[BookEr AI] OpenAI request failed with status:', status)
+      if (status === 401) {
+        return NextResponse.json({ error: 'AI service credentials are invalid. Check OPENAI_API_KEY.' }, { status: 503 })
+      }
+      if (status === 429) {
+        return NextResponse.json({ error: 'AI service rate limit or quota reached. Check your OpenAI usage and billing.' }, { status: 429 })
+      }
+      return NextResponse.json({ error: 'AI service request failed. Please try again later.' }, { status: 502 })
+    }
+
+    const result = await openAIResponse.json() as {
+      choices?: Array<{ message?: { content?: string | null } }>
+    }
+    const text = result.choices?.[0]?.message?.content?.trim()
+    if (!text) {
+      return NextResponse.json({ error: 'AI service returned an empty response. Please try again.' }, { status: 502 })
+    }
 
     if (body.action === 'review') {
       const feedback = parseReviewResponse(text, body.content || '')
