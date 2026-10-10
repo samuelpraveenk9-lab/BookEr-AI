@@ -19,7 +19,7 @@ import {
   BookOpen,
   FileText
 } from 'lucide-react'
-import { getProject } from '@/lib/storage'
+import { getProject, getUser, syncProjectsFromCloud } from '@/lib/storage'
 import { getAuthHeaders } from '@/lib/supabase'
 import { BRXProject } from '@/lib/types'
 
@@ -43,12 +43,18 @@ export default function ReviewPage() {
   const [reviewError, setReviewError] = useState<string | null>(null)
 
   useEffect(() => {
-    const proj = getProject(projectId)
-    if (!proj) {
-      router.push('/dashboard')
-      return
+    let cancelled = false
+    const loadProject = async () => {
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
+      await syncProjectsFromCloud()
+      if (cancelled) return
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
+      const proj = getProject(projectId)
+      if (!proj) { router.replace('/dashboard'); return }
+      setProject(proj)
     }
-    setProject(proj)
+    void loadProject()
+    return () => { cancelled = true }
   }, [projectId, router])
 
   const handleReview = async () => {

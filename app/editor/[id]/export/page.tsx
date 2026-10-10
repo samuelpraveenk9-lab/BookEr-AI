@@ -19,7 +19,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
-import { getProject, saveProject, addProject, getProjects, syncProjectsFromCloud } from '@/lib/storage'
+import { getProject, saveProject, addProject, getProjects, syncProjectsFromCloud, getUser } from '@/lib/storage'
 import { exportToBRX, exportToTXT, importBRX } from '@/lib/storage'
 import { BRXProject } from '@/lib/types'
 import { toast } from 'sonner'
@@ -36,8 +36,10 @@ export default function ExportPage() {
   useEffect(() => {
     let cancelled = false
     const loadProject = async () => {
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
       await syncProjectsFromCloud()
       if (cancelled) return
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
       const proj = getProject(projectId)
       if (!proj) { router.replace('/dashboard'); return }
       setProject(proj)

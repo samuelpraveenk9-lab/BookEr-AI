@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ import {
   ProjectType,
   Genre
 } from '@/lib/types'
-import { addProject, persistProjectToCloud } from '@/lib/storage'
+import { addProject, persistProjectToCloud, getUser } from '@/lib/storage'
 import { getAuthHeaders } from '@/lib/supabase'
 
 export default function CreateProjectPage() {
@@ -35,6 +35,10 @@ export default function CreateProjectPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+
+  useEffect(() => {
+    if (!getUser()?.isLoggedIn) router.replace('/auth')
+  }, [router])
   
   // Form state
   const [title, setTitle] = useState('')

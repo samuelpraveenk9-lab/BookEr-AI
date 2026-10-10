@@ -41,7 +41,7 @@ import {
   FileOutput,
   X
 } from 'lucide-react'
-import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings } from '@/lib/storage'
+import { getProject, saveProject, addWordsToday, syncProjectsFromCloud, getSettings, getUser } from '@/lib/storage'
 import { getAuthHeaders } from '@/lib/supabase'
 import { BRXProject, countWords, countChars, estimateReadTime, AIMessage } from '@/lib/types'
 import CharacterManager from '@/components/editor/character-manager'
@@ -84,8 +84,10 @@ export default function EditorPage() {
   useEffect(() => {
     let cancelled = false
     const loadProject = async () => {
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
       await syncProjectsFromCloud()
       if (cancelled) return
+      if (!getUser()?.isLoggedIn) { router.replace('/auth'); return }
       const proj = getProject(projectId)
       if (!proj) {
         router.replace('/dashboard')
