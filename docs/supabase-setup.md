@@ -33,6 +33,8 @@ RLS policies restrict rows to the authenticated user. Confirm the migration is a
 
 ## Email/password authentication
 
+In **Authentication → URL Configuration**, set the Site URL to `https://v0-booker-ai-platform.vercel.app`. Add `https://v0-booker-ai-platform.vercel.app/**` and `http://localhost:3000/**` to the allowed redirect URLs so email confirmation and local development redirects work.
+
 The sign-in and registration forms call Supabase Auth. If email confirmation is enabled, registration may require the user to confirm their email before signing in. Phone login requires phone auth and SMS verification to be configured in Supabase.
 
 ## Google OAuth setup
@@ -42,7 +44,7 @@ The sign-in and registration forms call Supabase Auth. If email confirmation is 
 3. Add the Supabase-provided callback URL to the authorized redirect URIs in Google Cloud.
 4. Add these application callback URLs to Supabase's redirect URL allow list:
    - `http://localhost:3000/auth/callback` for local development
-   - `https://YOUR-VERCEL-DOMAIN/auth/callback` for the deployed app
+   - `https://v0-booker-ai-platform.vercel.app/auth/callback` for the deployed app
 5. Save the provider settings and test Google sign-in on the deployed domain.
 
 The application callback retrieves the signed-in user from Supabase before storing the session.
