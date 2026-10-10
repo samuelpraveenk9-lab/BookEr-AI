@@ -172,7 +172,7 @@ function buildPrompt(body: AIRequest) {
 
 function parseReviewResponse(text: string): { strengths: string[]; improvements: string[]; suggestions: string[] } | null {
   const normalized = text.replace(/\r/g, '')
-  const sectionPattern = /(?:^|\n)\s*(?:\d+[.)]\s*)?(?:#{1,3}\s*)?(?:\\*\\*)?(Strengths|Areas to Improve|Specific Suggestions|Suggestions)(?:\\s*:)?(?:\\*\\*)?\\s*:?[ \\t]*\\n?/gi
+  const sectionPattern = /(?:^|\n)\s*(?:\d+[.)]\s*)?(?:#{1,3}\s*)?(?:\*\*)?(Strengths|Areas to Improve|Specific Suggestions|Suggestions)(?:\s*:)?(?:\*\*)?\s*:?[ \t]*\n?/gi
   const matches = [...normalized.matchAll(sectionPattern)]
   const sections: Record<string, string> = {}
 
