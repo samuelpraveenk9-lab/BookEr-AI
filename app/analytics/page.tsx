@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -15,9 +16,9 @@ import {
   BookOpen,
   TrendingUp
 } from 'lucide-react'
-import { getProjects, getDailyStats, getWritingStreak, getTotalWords } from '@/lib/storage'
+import { getProjects, getDailyStats, getWritingStreak, getUser, syncProjectsFromCloud, syncDailyStatsFromCloud } from '@/lib/storage'
 import { BRXProject, TARGET_WORD_COUNTS, DailyStats } from '@/lib/types'
-import { format, subDays, parseISO, startOfDay, isEqual } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
 
 export default function AnalyticsPage() {
@@ -26,32 +27,35 @@ export default function AnalyticsPage() {
   const [totalWords, setTotalWords] = useState(0)
   const [streak, setStreak] = useState(0)
   const [weeklyData, setWeeklyData] = useState<{ day: string; words: number }[]>([])
-  const [mostProductiveHour, setMostProductiveHour] = useState(14) // Default to 2 PM
+  const [weeklyAverage, setWeeklyAverage] = useState(0)
+  const router = useRouter()
 
   useEffect(() => {
-    setProjects(getProjects())
-    setDailyStats(getDailyStats())
-    setTotalWords(getTotalWords())
-    setStreak(getWritingStreak())
-    
-    // Calculate weekly data
-    const stats = getDailyStats()
-    const last7Days = []
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i)
-      const dateStr = format(date, 'yyyy-MM-dd')
-      const stat = stats.find(s => s.date === dateStr)
-      last7Days.push({
-        day: format(date, 'EEE'),
-        words: stat?.wordsWritten || 0
-      })
+    let cancelled = false
+    const loadAnalytics = async () => {
+      const user = getUser()
+      if (!user?.isLoggedIn) { router.replace('/auth'); return }
+      setProjects(getProjects())
+      setDailyStats(getDailyStats())
+      const [cloudProjects, cloudStats] = await Promise.all([syncProjectsFromCloud(), syncDailyStatsFromCloud()])
+      if (cancelled) return
+      setProjects(cloudProjects)
+      setDailyStats(cloudStats)
+      setTotalWords(cloudProjects.reduce((total, project) => total + (project.meta.wordCount || 0), 0))
+      setStreak(getWritingStreak())
+      const last7Days: { day: string; words: number }[] = []
+      for (let i = 6; i >= 0; i--) {
+        const date = subDays(new Date(), i)
+        const dateStr = format(date, 'yyyy-MM-dd')
+        const stat = cloudStats.find((item) => item.date === dateStr)
+        last7Days.push({ day: format(date, 'EEE'), words: stat?.wordsWritten || 0 })
+      }
+      setWeeklyData(last7Days)
+      setWeeklyAverage(Math.round(last7Days.reduce((total, day) => total + day.words, 0) / 7))
     }
-    setWeeklyData(last7Days)
-    
-    // Simulate most productive hour based on activity
-    const randomHour = 9 + Math.floor(Math.random() * 12)
-    setMostProductiveHour(randomHour)
-  }, [])
+    void loadAnalytics()
+    return () => { cancelled = true }
+  }, [router])
 
   return (
     <div className="min-h-screen bg-background">
@@ -131,15 +135,8 @@ export default function AnalyticsPage() {
                   <Clock className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {mostProductiveHour > 12 
-                      ? `${mostProductiveHour - 12} PM` 
-                      : mostProductiveHour === 12 
-                        ? '12 PM' 
-                        : `${mostProductiveHour} AM`
-                    }
-                  </p>
-                  <p className="text-sm text-muted-foreground">Most Productive</p>
+                  <p className="text-2xl font-bold text-foreground">{weeklyAverage.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">7-Day Daily Average</p>
                 </div>
               </div>
             </CardContent>
