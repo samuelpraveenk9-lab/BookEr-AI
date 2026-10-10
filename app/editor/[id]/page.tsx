@@ -161,7 +161,8 @@ export default function EditorPage() {
     projectRef.current = updatedProject
     saveProject(projectId, updatedProject)
     setProject(updatedProject)
-    setTimeout(() => setSaveStatus('saved'), 500)
+    if (savedStatusTimeoutRef.current) clearTimeout(savedStatusTimeoutRef.current)
+    savedStatusTimeoutRef.current = setTimeout(() => setSaveStatus('saved'), 350)
   }, [projectId, syncEditorToProject])
 
   const scheduleAutoSave = useCallback(() => {
@@ -192,6 +193,7 @@ export default function EditorPage() {
 
     const html = editor.innerHTML
     const text = editor.innerText
+    setSaveStatus('unsaved')
     const currentProject = projectRef.current
     if (currentProject?.chapters[activeChapterIndexRef.current]) {
       const updatedProject = {
@@ -211,7 +213,7 @@ export default function EditorPage() {
       words: countWords(editorRef.current.innerText),
       chars: countChars(editorRef.current.innerText),
     })
-    setSaveStatus('unsaved')
+    scheduleAutoSave()
   }
 
   const execCommand = (command: string, value?: string) => {
