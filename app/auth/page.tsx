@@ -9,68 +9,64 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BookOpen, Mail, Phone, Chrome } from 'lucide-react'
-import { saveUser } from '@/lib/storage'
+import { signInWithPassword, signUpWithPassword, startGoogleOAuth } from '@/lib/supabase'
 
 export default function AuthPage() {
   const router = useRouter()
   const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email')
   const [isLoading, setIsLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setAuthError('')
+    setAuthNotice('')
     setIsLoading(true)
-    
     const formData = new FormData(e.currentTarget)
-    const email = formData.get('email') as string || formData.get('phone') as string
-    
-    // Simulate authentication
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    saveUser({
-      name: 'Author',
-      email: email,
-      isLoggedIn: true
-    })
-    
-    setIsLoading(false)
-    router.push('/dashboard')
+    const identifier = String(formData.get(authMethod === 'email' ? 'email' : 'phone') || '').trim()
+    const password = String(formData.get('password') || '')
+    try {
+      await signInWithPassword(identifier, password, authMethod)
+      router.replace('/dashboard')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Sign-in failed. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setAuthError('')
+    setAuthNotice('')
     setIsLoading(true)
-    
     const formData = new FormData(e.currentTarget)
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string || formData.get('phone') as string
-    
-    // Simulate registration
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    saveUser({
-      name,
-      email,
-      isLoggedIn: true
-    })
-    
-    setIsLoading(false)
-    router.push('/dashboard')
+    const name = String(formData.get('name') || '').trim()
+    const identifier = String(formData.get(authMethod === 'email' ? 'email' : 'phone') || '').trim()
+    const password = String(formData.get('password') || '')
+    if (password.length < 8) {
+      setAuthError('Use a password with at least 8 characters.')
+      setIsLoading(false)
+      return
+    }
+    try {
+      const result = await signUpWithPassword(identifier, password, name, authMethod)
+      if (result.access_token && result.user?.id) router.replace('/dashboard')
+      else setAuthNotice(authMethod === 'email'
+        ? 'Account created. Check your email to confirm the account, then sign in.'
+        : 'Account request submitted. Complete the phone verification configured in Supabase, then sign in.')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Account creation failed. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleGoogleAuth = async () => {
-    setIsLoading(true)
-    
-    // Simulate Google auth
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    saveUser({
-      name: 'Google User',
-      email: 'user@gmail.com',
-      isLoggedIn: true
-    })
-    
-    setIsLoading(false)
-    router.push('/dashboard')
+  const handleGoogleAuth = () => {
+    setAuthError('')
+    try { startGoogleOAuth() }
+    catch (error) { setAuthError(error instanceof Error ? error.message : 'Google sign-in could not be started.') }
   }
 
   return (
@@ -91,6 +87,8 @@ export default function AuthPage() {
           <CardDescription>Sign in to continue writing your stories</CardDescription>
         </CardHeader>
         <CardContent>
+          {authError && <p role="alert" className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{authError}</p>}
+          {authNotice && <p role="status" className="mb-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">{authNotice}</p>}
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="signin">Sign In</TabsTrigger>
